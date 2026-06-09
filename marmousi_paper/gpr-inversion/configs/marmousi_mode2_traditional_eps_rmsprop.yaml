@@ -1,0 +1,35 @@
+name: marmousi_mode2_traditional_eps_rmsprop
+migration_status: supported
+source_path: ../traditional/mode2_RMSprop/marmousi.py
+model: marmousi
+acquisition_mode: mode2
+parameterization: traditional
+inversion_strategy: eps_only
+optimizer: rmsprop
+illumination: false
+fixed_top_rows: 10
+snapshot_interval: 1000
+data_path: ../traditional/mode2_RMSprop/modelv1.bin
+
+regularization:
+  tv:
+    eps: 0.0
+    sig: 0.0
+  tikhonov:
+    eps: 0.01
+    sig: 0.0
+
+training:
+  learning_rate_eps: 0.015
+  learning_rate_sig: 0.0
+  lr_eps_stage2: 0.015
+  num_epochs_stage1: 2001
+  num_epochs_stage2: 0
+  offset: 0.0
+
+runtime:
+  mpi_processes: 20
+  device: cpu
+  output_dir: outputs/marmousi/mode2_traditional_eps_rmsprop
+  resume: false
+  stage1_checkpoint_path: ""

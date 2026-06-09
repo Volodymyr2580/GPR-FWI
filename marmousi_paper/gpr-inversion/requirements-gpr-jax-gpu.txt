@@ -1,0 +1,8 @@
+# JAX GPU environment only. Do not install torch in this environment.
+# Current JAX CUDA 12 wheels require a CUDA 12-capable NVIDIA driver and
+# cuDNN >= 9.8 from pip-installed nvidia-* packages.
+
+jax[cuda12]==0.6.2
+einops
+timm
+optuna

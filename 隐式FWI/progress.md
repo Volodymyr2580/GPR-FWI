@@ -1,0 +1,2208 @@
+# progress.md
+
+本文件记录论文 `Implicit multiparameter full waveform inversion of multioffset ground penetrating radar data` 的复现进度。
+
+## 维护约定
+
+- 每次跑实验都新增一条“日期 + 条目”，包含：config、命令、关键输出、产物目录与结论。
+- `plan.md` 只放阶段规划与验收标准；可运行结果和实验记录以本文件为准。
+- 产物统一写入 `runs/<name>.../`，不要覆盖旧结果。
+- 禁止批量删除旧产物；需要清理时只删除一个明确路径的文件。
+
+## 当前里程碑
+
+- [x] 工程骨架：Python 包、configs、tests。
+- [x] 原 SIREN 坐标网络和参数范围映射。
+- [x] FR-INR 参考仓库已克隆到 `FR-INR/`。
+- [x] FR-INR 核心层已作为网络架构标准改写到本项目：`src/ifwi_gpr/networks/fr_inr.py`。
+- [x] `network.architecture = "fr_inr"` 已接入 `train.py`。
+- [x] 新增 FR-INR smoke config：`configs/frinr_cross_dropout_smoke.json`。
+- [x] JAX 专用源码、测试和配置已从主线移除。
+- [x] FR-INR dry-run 测试通过。
+- [x] FR-INR + CPU/MPI GPR bridge 小规模训练通过。
+- [x] 论文式 `mean/std` 标准化参数输出已接入。
+- [x] cross-shape IFWI/dropout-IFWI 对比可视化已接入。
+- [ ] 论文级长训练结果。
+
+## 进度日志
+
+### 2026-06-06（明确目标：GPR IFWI 论文；FR-INR 作为网络标准）
+
+- 背景：
+  - 用户提供 CVPR 2024 FR-INR 仓库：`https://github.com/CVL-UESTC/FR-INR.git`。
+  - 该仓库用于给坐标网络提供可靠架构标准；复现目标仍是 GPR 双参数 IFWI/dropout-IFWI 论文。
+  - 决定不再使用 JAX 环境作为主线。
+  - FR-INR 只负责隐式参数场表示；GPR 物理正演仍需要外部求解器。
+
+- 已完成：
+  - 克隆参考仓库到 `FR-INR/`。
+  - 新增 `src/ifwi_gpr/networks/fr_inr.py`：
+    - `FourierReparamLinear`
+    - `SineFourierReparamLayer`
+    - `FRINR`
+    - `IFWIFrInrNetwork`
+  - 更新 `src/ifwi_gpr/networks/__init__.py`，导出 FR-INR 模块。
+  - 更新 `src/ifwi_gpr/train.py`，支持：
+    - `network.architecture = "siren"`
+    - `network.architecture = "fr_inr"`
+  - 新增 `configs/frinr_cross_dropout_smoke.json`。
+  - 新增 `configs/paper_cross_dropout_ifwi_frinr_smoke.json`，使用论文式 `mean/std` 参数输出。
+  - 更新 `tests/test_network_framework.py`，覆盖 FR-INR 输出 shape、物理范围和 dry-run。
+  - 增加 `ParameterStats`，支持 `m = m_tilde * std + mean` 的论文式参数化。
+
+- 已清理：
+  - `src/ifwi_gpr/jax_network.py`
+  - `src/ifwi_gpr/jax_optim.py`
+  - `src/ifwi_gpr/jax_train.py`
+  - `src/ifwi_gpr/run_jax.py`
+  - `tests/test_jax_config_helpers.py`
+  - `tests/test_jax_network.py`
+  - `configs/*jax*.json`
+
+- 未清理：
+  - `__pycache__` 中仍有 JAX 字样的编译缓存。
+  - `runs/` 中可能仍有历史 JAX 实验产物。
+  - 这些属于多文件/目录清理，按安全规则暂不批量删除。
+
+- 下一步：
+  - 将 cross-shape smoke 从 dry-run 推进到短训练。
+  - 增加训练后自动绘图和真实/初始/最终模型保存。
+  - 开始整理论文级 cross-shape 与 overthrust config。
+
+### 2026-06-06（已完成：FR-INR dry-run 与 CPU/MPI bridge smoke）
+
+- 环境：
+  - 新建 Python 3.12 虚拟环境：`.venv312`。
+  - 安装依赖：`torch==2.12.0`、`numba==0.65.1`、`scipy`、`matplotlib` 等。
+  - `uv` 默认缓存目录 `F:\AppCaches\uv-cache` 在当前环境无权限写入；本项目中使用 `$env:UV_CACHE_DIR='C:\tmp\uv-cache'`。
+  - Numba 缓存使用 `$env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'`，避免尝试写参考工程目录。
+
+- 单元测试：
+  - 命令：`$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：`7 tests OK`。
+  - 说明：测试临时目录需要指向 `C:\tmp`，否则沙箱不允许写 Windows 默认用户 Temp。
+
+- FR-INR dry-run：
+  - 命令：`.\.venv312\Scripts\python.exe -m ifwi_gpr.run --config configs\frinr_cross_dropout_smoke.json --dry-run`
+  - 输出：
+    - `epsilon_shape=[101,101]`
+    - `sigma_shape=[101,101]`
+    - `epsilon_finite=true`
+    - `sigma_finite=true`
+    - `parameter_count=50178`
+
+- Micro bridge smoke：
+  - config：`configs/frinr_micro_bridge_smoke.json`
+  - 命令：`$env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config configs\frinr_micro_bridge_smoke.json`
+  - 结果：1 epoch loss `9.898034855723381e-03`
+  - 产物：`runs/frinr_micro_bridge_smoke_run001/`
+
+- Tiny bridge smoke：
+  - config：`configs/frinr_tiny_bridge_smoke.json`
+  - 命令：`$env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config configs\frinr_tiny_bridge_smoke.json`
+  - 结果：1 epoch loss `1.5640548372175545e-04`
+  - 产物：`runs/frinr_tiny_bridge_smoke_run002/`
+
+- Cross-shape dropout smoke：
+  - config：`configs/frinr_cross_dropout_smoke.json`
+  - 命令：`$env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config configs\frinr_cross_dropout_smoke.json`
+  - 结果：2 epoch loss `5.119438171386719e-01` → `4.979342520236969e-01`
+  - 产物：`runs/frinr_cross_dropout_smoke_run001/`
+  - 已生成：
+    - `figures/parameter_maps.png`
+    - `figures/error_maps.png`
+    - `figures/loss_curve.png`
+    - `figures/shot_gather_comparison.png`
+  - 结论：FR-INR + CPU/MPI FDTD + 显式梯度桥接可完成 101x101 cross-shape dropout smoke。2 epoch 仅验证链路，参数图仍接近背景场，后续需要预训练或更长训练。
+
+- 代码补充：
+  - `train_from_config` 现在会保存 `true_*`、`initial_*`、`final_*`、`observed_data.npy`、`final_synthetic_data.npy`。
+  - 训练结束自动调用 `generate_run_figures` 输出参数图、误差图、loss 曲线和 shot gather 对比。
+  - 修复单接收器 shot gather 绘图时 x 轴范围重合的 warning。
+  - 新增可选预训练：`training.pretrain_epochs`、`training.pretrain_learning_rate`。
+  - 预训练 loss 按物理范围归一化，避免 `sigma` 数值太小导致训练几乎只关注 `epsilon_r`。
+
+- Cross-shape dropout pretrain smoke：
+  - config：`configs/frinr_cross_dropout_pretrain_smoke.json`
+  - 命令：`$env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config configs\frinr_cross_dropout_pretrain_smoke.json`
+  - 预训练结果：50 epoch normalized loss `4.780639708042145e-02` → `3.268838336225599e-04`
+  - 反演结果：5 epoch waveform loss `2.030927687883377e-03` → `3.7463512853719294e-04`
+  - 产物：`runs/frinr_cross_dropout_pretrain_smoke_run001/`
+  - 结论：当前推荐用这个配置做 FR-INR + dropout-IFWI 短验证；预训练后 `epsilon_r` 和 `sigma` 初始场都更接近均匀背景。
+
+- 重要发现：
+  - 参考 `Add_CPML` 内部将 `npml` 固定为 10，所以 config 中 `solver.npml` 必须保持 10，否则 padding 尺寸和 CPML 内部尺寸会不一致。
+  - `mpi4py` 未安装时参考求解器会退回 serial mode；当前 smoke 可接受。
+
+### 2026-06-06（论文式参数输出与 cross-shape dropout-IFWI smoke）
+
+- 方向校准：
+  - 复现目标是 GPR 双参数 IFWI/dropout-IFWI 论文。
+  - FR-INR 仓库只作为坐标网络架构标准，不作为被复现论文目标。
+
+- 代码变更：
+  - 新增 `ParameterStats`，支持论文中的 `m = m_tilde * std + mean` 参数输出。
+  - `IFWINetwork` 和 `IFWIFrInrNetwork` 同时支持：
+    - `ParameterBounds`：早期 smoke 使用的 bounds/sigmoid 映射。
+    - `ParameterStats`：论文式 mean/std 标准化映射。
+  - `_parameter_scales` 对 standardized mapping 使用对应的 std 做预训练归一化。
+  - 新增测试：FR-INR 网络可以接受论文式标准化参数映射。
+
+- 新增配置：
+  - `configs/paper_cross_dropout_ifwi_frinr_smoke.json`
+  - 关键设置：
+    - cross-shape：`101 x 101`，`dx=dz=0.1 m`
+    - 背景：`epsilon_r=4.0`，`sigma=0.003 S/m`
+    - 网络：FR-INR 风格坐标网络，`128 x 4`，`omega0=30`，`dropout=0.2`
+    - 参数映射：`epsilon_mean=4.0`，`epsilon_std=1.0`，`sigma_mean=0.003`，`sigma_std=0.0015`
+    - 说明：代码中 `sigma` 单位为 S/m；论文常用 mS/m。
+
+- 验证：
+  - 单元测试命令：`$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：`10 tests OK`。
+  - dry-run 命令：`.\.venv312\Scripts\python.exe -m ifwi_gpr.run --config configs\paper_cross_dropout_ifwi_frinr_smoke.json --dry-run`
+  - dry-run 输出：
+    - `epsilon_shape=[101,101]`
+    - `sigma_shape=[101,101]`
+    - `epsilon_finite=true`
+    - `sigma_finite=true`
+    - `parameter_count=50178`
+  - 短训练命令：`$env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config configs\paper_cross_dropout_ifwi_frinr_smoke.json`
+  - 预训练结果：50 epoch normalized loss `1.8459749408066273e-03` → `2.9536270176322432e-06`
+  - 反演结果：5 epoch waveform loss 在 `1.7558734555223054e-07` 到 `4.855574502471427e-07` 范围内波动；dropout 短训练不要求单调下降。
+  - 产物：`runs/paper_cross_dropout_ifwi_frinr_smoke/`
+  - 已生成：
+    - `figures/parameter_maps.png`
+    - `figures/error_maps.png`
+    - `figures/loss_curve.png`
+    - `figures/shot_gather_comparison.png`
+
+- Cross-shape full template：
+  - 新增 `src/ifwi_gpr/acquisition.py`，支持：
+    - `kind="explicit"`：沿用手写 `sources` / `receivers` 列表。
+    - `kind="perimeter"`：沿模型边界顺时针均匀生成炮检点。
+  - 新增 `configs/paper_cross_dropout_ifwi_frinr_full_template.json`：
+    - `source_count=32`
+    - `receiver_count=64`
+    - `steps=500`，对应 `dt=0.2 ns` 和总记录时间约 `100 ns`
+  - dry-run 命令：`.\.venv312\Scripts\python.exe -m ifwi_gpr.run --config configs\paper_cross_dropout_ifwi_frinr_full_template.json --dry-run`
+  - dry-run 结果：shape 和有限值检查通过，参数量 `50178`。
+  - 说明：该配置是正式 cross-shape 实验模板，计算量明显高于 smoke，暂未直接启动长训练。
+
+- 数据敏感性诊断：
+  - 背景：`paper_cross_dropout_ifwi_frinr_smoke` 使用 `steps=32`，对应总时间 `6.4 ns`，波形几乎还没携带异常体信息，最终参数图基本保持均匀背景。
+  - 新增 `training.epochs=0` 支持，用于只评估观测数据与初始模型数据差异，不做反演更新。
+  - 新增 `initial_synthetic_data.npy` 保存，并在 `metrics.json` 中写入：
+    - `data_misfit.observed_power`
+    - `data_misfit.initial.mse`
+    - `data_misfit.initial.relative_mse`
+    - `data_misfit.final.mse`
+    - `data_misfit.final.relative_mse`
+  - 新增 `configs/paper_cross_data_sensitivity_probe.json`：
+    - `source_count=8`
+    - `receiver_count=16`
+    - `steps=256`
+    - `epochs=0`
+  - 结果：
+    - observed data shape：`[8, 16, 256]`
+    - observed power：`625.8218379276103`
+    - initial MSE：`2.61938380064106e-02`
+    - initial relative MSE：`4.1855103831388635e-05`
+  - 结论：`8/16/256` 比早期 `4/8/128` 或 `3/4/32` 更适合作为短训练窗口，因为异常体对数据的影响已经可测。
+
+- Cross-shape sensitivity train：
+  - 新增 `configs/paper_cross_ifwi_frinr_sensitivity_train.json`：
+    - 无 dropout，`source_count=8`，`receiver_count=16`，`steps=256`
+    - `learning_rate=1e-5`，`epochs=10`
+  - IFWI 结果：
+    - training loss：`2.6193836703896523e-02` → `2.580420859158039e-02`
+    - eval relative MSE：`4.1855103831388635e-05` → `4.118526073898619e-05`
+    - epsilon update L2：`0.3364018201828003`
+    - sigma update L2：`3.525863576210457e-04`
+    - 产物：`runs/paper_cross_ifwi_frinr_sensitivity_train/`
+  - 新增 `configs/paper_cross_dropout_ifwi_frinr_sensitivity_train.json`：
+    - dropout `p=0.2`，其余设置与 IFWI sensitivity train 对齐。
+  - dropout-IFWI 结果：
+    - training loss：`2.6045585051178932e-02` → `2.5848792865872383e-02`
+    - eval relative MSE：`4.1600080133306384e-05` → `4.111060013583118e-05`
+    - epsilon update L2：`0.16323955357074738`
+    - sigma update L2：`2.0831369329243898e-04`
+    - 产物：`runs/paper_cross_dropout_ifwi_frinr_sensitivity_train/`
+  - 结论：
+    - 低学习率 `1e-5` 能稳定降低数据误差。
+    - dropout-IFWI 在短 probe 中参数更新更温和，final relative MSE 略低于无 dropout 对照。
+    - 目前仍只是短训练，参数图离论文效果还远；下一步应延长 epoch，或推进 `32/64/500` 模板。
+
+- 对比可视化：
+  - 新增 `src/ifwi_gpr/metrics.py`，包含论文式指标：
+    - `R2`
+    - `SNR`
+    - `MAPE`
+    - `SSIM`
+  - 新增 `src/ifwi_gpr/compare.py`，可以对两个 run 目录生成：
+    - `parameter_comparison.png/pdf`
+    - `error_comparison.png/pdf`
+    - `loss_comparison.png/pdf`
+    - `comparison_metrics.json`
+  - 命令：
+    - `.\.venv312\Scripts\python.exe -m ifwi_gpr.compare --ifwi-run runs\paper_cross_ifwi_frinr_sensitivity_train --dropout-run runs\paper_cross_dropout_ifwi_frinr_sensitivity_train --output runs\comparisons\paper_cross_sensitivity_ifwi_vs_dropout`
+  - 产物：
+    - `runs/comparisons/paper_cross_sensitivity_ifwi_vs_dropout/`
+  - 关键结果：
+    - IFWI eval relative MSE：`4.1855103831388635e-05` → `4.118526073898619e-05`
+    - dropout-IFWI eval relative MSE：`4.1600080133306384e-05` → `4.111060013583118e-05`
+    - epsilon R2 仍接近 0 或为负值，说明短训练只验证了波形拟合方向，尚未形成论文图 7 级别的参数重建。
+  - 结论：
+    - 当前已经具备“跑实验 → 保存结果 → 论文式指标 → 对比可视化”的闭环。
+    - 下一步需要增加训练预算，优先使用 `paper_cross_dropout_ifwi_frinr_full_template.json` 或它的中间规模版本。
+
+### 2026-06-06（推进到 long30 与 half-shot 500 step 论文近似实验）
+
+- 新增 long30 中等规模训练：
+  - `configs/paper_cross_ifwi_frinr_sensitivity_long30.json`
+  - `configs/paper_cross_dropout_ifwi_frinr_sensitivity_long30.json`
+  - 设置：
+    - `source_count=8`
+    - `receiver_count=16`
+    - `steps=256`
+    - `epochs=30`
+    - `learning_rate=1e-5`
+  - IFWI 结果：
+    - training loss：`2.6193836703896523e-02` → `2.5362366810441017e-02`
+    - eval relative MSE：`4.1855103831388635e-05` → `4.0493131352017974e-05`
+    - epsilon update L2：`0.7896245121955872`
+    - sigma update L2：`9.62582475040108e-04`
+    - 产物：`runs/paper_cross_ifwi_frinr_sensitivity_long30/`
+  - dropout-IFWI 结果：
+    - training loss：`2.6045585051178932e-02` → `2.5464637205004692e-02`
+    - eval relative MSE：`4.1600080133306384e-05` → `4.047678130199547e-05`
+    - epsilon update L2：`0.532378077507019`
+    - sigma update L2：`6.57981145195663e-04`
+    - 产物：`runs/paper_cross_dropout_ifwi_frinr_sensitivity_long30/`
+  - 对比产物：
+    - `runs/comparisons/paper_cross_sensitivity_long30_ifwi_vs_dropout/`
+  - 结论：
+    - 30 epoch 相比 10 epoch 继续稳定降低 waveform misfit。
+    - dropout-IFWI 的 final relative MSE 略低，且参数更新幅度更温和。
+    - 参数图指标仍未达到论文图 7 级别，说明还需要更接近论文的炮检密度、时间窗和训练轮数。
+
+- 新增 half-shot 500 step 数据敏感性诊断：
+  - `configs/paper_cross_data_sensitivity_halfshot500.json`
+  - 设置：
+    - `source_count=16`
+    - `receiver_count=32`
+    - `steps=500`
+    - `epochs=0`
+  - 结果：
+    - observed power：`165.68110471787676`
+    - initial MSE：`6.514153652321807e-02`
+    - initial relative MSE：`3.9317420434962483e-04`
+    - 产物：`runs/paper_cross_data_sensitivity_halfshot500/`
+  - 对比：
+    - `8/16/256` 的 initial relative MSE 为 `4.1855103831388635e-05`
+    - `16/32/500` 的 initial relative MSE 提高到 `3.9317420434962483e-04`
+  - 结论：
+    - 500 step 和更密炮检使异常体对数据的影响强了约一个数量级。
+    - 后续正式复现应优先使用 `500 step` 时间窗。
+
+- 新增 half-shot 500 step 短训练：
+  - `configs/paper_cross_ifwi_frinr_halfshot500_train5.json`
+  - `configs/paper_cross_dropout_ifwi_frinr_halfshot500_train5.json`
+  - 设置：
+    - `source_count=16`
+    - `receiver_count=32`
+    - `steps=500`
+    - `epochs=5`
+    - `learning_rate=1e-5`
+  - IFWI 结果：
+    - training loss：`6.514154374599457e-02` → `6.502330303192139e-02`
+    - eval relative MSE：`3.9317420434962483e-04` → `3.9231861654739285e-04`
+    - epsilon update L2：`0.18420575559139252`
+    - sigma update L2：`1.8114515114575624e-04`
+    - 产物：`runs/paper_cross_ifwi_frinr_halfshot500_train5/`
+  - dropout-IFWI 结果：
+    - training loss：`6.508218497037888e-02` → `6.502252072095871e-02`
+    - eval relative MSE：`3.9282826490469834e-04` → `3.9228562825308527e-04`
+    - epsilon update L2：`0.08431199193000793`
+    - sigma update L2：`1.075841864803806e-04`
+    - 产物：`runs/paper_cross_dropout_ifwi_frinr_halfshot500_train5/`
+  - 对比产物：
+    - `runs/comparisons/paper_cross_halfshot500_train5_ifwi_vs_dropout/`
+  - 结论：
+    - half-shot 500 step 的数据更接近论文实验，但 5 epoch 仍然只展示早期下降趋势。
+    - dropout-IFWI 的 final relative MSE 略低，参数更新更保守。
+    - 下一步建议：在 `16/32/500` 上把训练推进到 30 或 50 epoch；确认趋势后再上 `32/64/500` 全论文模板。
+
+### 2026-06-06（half-shot 500 step 深化：offset、学习率与 train20）
+
+- 新增 half-shot 500 step train30：
+  - `configs/paper_cross_ifwi_frinr_halfshot500_train30.json`
+  - `configs/paper_cross_dropout_ifwi_frinr_halfshot500_train30.json`
+  - 设置：
+    - `source_count=16`
+    - `receiver_count=32`
+    - `steps=500`
+    - `offset=0`
+    - `learning_rate=1e-5`
+    - `epochs=30`
+  - IFWI 结果：
+    - eval relative MSE：`3.9317420434962483e-04` → `3.907805836910052e-04`
+    - final epsilon range：`3.980360746383667` → `4.013073921203613`
+    - final sigma range：`0.002979091601446271` → `0.0030305611435323954`
+  - dropout-IFWI 结果：
+    - eval relative MSE：`3.9282826490469834e-04` → `3.911738890282968e-04`
+    - final epsilon range：`3.9860427379608154` → `4.00700044631958`
+    - final sigma range：`0.0029932353645563126` → `0.0030173759441822767`
+  - 对比产物：
+    - `runs/comparisons/paper_cross_halfshot500_train30_ifwi_vs_dropout/`
+  - 结论：
+    - 30 epoch 仍在降低 waveform misfit，但参数幅值仍非常接近背景。
+    - 仅靠 `lr=1e-5` 会收敛过慢。
+
+- 新增 offset5 数据敏感性诊断：
+  - `configs/paper_cross_data_sensitivity_halfshot500_offset5.json`
+  - 设置：
+    - `source_count=16`
+    - `receiver_count=32`
+    - `steps=500`
+    - `offset=5`
+    - `epochs=0`
+  - 结果：
+    - offset0 initial relative MSE：`3.9317420434962483e-04`
+    - offset5 initial relative MSE：`1.0083036312377332e-03`
+  - 结论：
+    - 将 perimeter 炮检点从最外圈向内移 `5` 个网格后，异常体数据敏感性提高约 `2.5x`。
+    - 后续 cross-shape 复现实验优先使用 `offset=5` 的 half-shot 或 full-shot 设置。
+
+- 新增 offset5 + `lr=3e-5` train10：
+  - `configs/paper_cross_ifwi_frinr_halfshot500_offset5_lr3e5_train10.json`
+  - `configs/paper_cross_dropout_ifwi_frinr_halfshot500_offset5_lr3e5_train10.json`
+  - IFWI 结果：
+    - eval relative MSE：`1.0083036312377332e-03` → `9.989487050508367e-04`
+    - epsilon update L2：`0.8792639970779419`
+    - sigma update L2：`0.0010930111166089773`
+  - dropout-IFWI 结果:
+    - eval relative MSE：`1.0075702036202662e-03` → `1.0014172376985662e-03`
+    - epsilon update L2：`0.5155500769615173`
+    - sigma update L2：`0.0007385430508293211`
+  - 对比产物：
+    - `runs/comparisons/paper_cross_halfshot500_offset5_lr3e5_train10_ifwi_vs_dropout/`
+  - 结论：
+    - `lr=3e-5` 稳定，但参数图仍推进较慢。
+
+- 新增 offset5 + `lr=1e-4` train5：
+  - `configs/paper_cross_ifwi_frinr_halfshot500_offset5_lr1e4_train5.json`
+  - `configs/paper_cross_dropout_ifwi_frinr_halfshot500_offset5_lr1e4_train5.json`
+  - IFWI 结果：
+    - eval relative MSE：`1.0083036312377332e-03` → `9.94884928598963e-04`
+    - epsilon update L2：`1.369370698928833`
+    - sigma update L2：`0.0019155481131747365`
+    - final epsilon range：`3.9694833755493164` → `4.020663738250732`
+    - final sigma range：`0.0029648933559656143` → `0.003053094958886504`
+  - dropout-IFWI 结果：
+    - eval relative MSE：`1.0075702036202662e-03` → `9.985784339110253e-04`
+    - epsilon update L2：`0.9355027675628662`
+    - sigma update L2：`0.0013383520999923348`
+  - 对比产物：
+    - `runs/comparisons/paper_cross_halfshot500_offset5_lr1e4_train5_ifwi_vs_dropout/`
+  - 结论：
+    - `lr=1e-4` 没有发散，并明显快于 `3e-5`。
+    - 无 dropout 数据拟合更快，dropout 参数更新更保守。
+
+- 新增 offset5 + `lr=1e-4` train20：
+  - `configs/paper_cross_ifwi_frinr_halfshot500_offset5_lr1e4_train20.json`
+  - `configs/paper_cross_dropout_ifwi_frinr_halfshot500_offset5_lr1e4_train20.json`
+  - IFWI 结果：
+    - training loss：`0.16871361434459686` → `0.15958663821220398`
+    - eval relative MSE：`1.0083036312377332e-03` → `9.497664639736584e-04`
+    - epsilon update L2：`4.870804309844971`
+    - sigma update L2：`0.01347829308360815`
+    - final epsilon range：`3.8806049823760986` → `4.088836193084717`
+    - final sigma range：`0.002868125680834055` → `0.003271237015724182`
+    - 产物：`runs/paper_cross_ifwi_frinr_halfshot500_offset5_lr1e4_train20/`
+  - dropout-IFWI 结果：
+    - training loss：`0.16857872903347015` → `0.16230881214141846`
+    - eval relative MSE：`1.0075702036202662e-03` → `9.639945444001131e-04`
+    - epsilon update L2：`4.67390775680542`
+    - sigma update L2：`0.011937563307583332`
+    - final epsilon range：`3.8935389518737793` → `4.074878692626953`
+    - final sigma range：`0.0029305124189704657` → `0.003212988842278719`
+    - 产物：`runs/paper_cross_dropout_ifwi_frinr_halfshot500_offset5_lr1e4_train20/`
+  - 对比产物：
+    - `runs/comparisons/paper_cross_halfshot500_offset5_lr1e4_train20_ifwi_vs_dropout/`
+  - 参数指标：
+    - epsilon R2 initial：`-0.001191100175821136`
+    - epsilon R2 IFWI：`-0.002829500737080215`
+    - epsilon R2 dropout-IFWI：`0.001272276330811617`
+    - sigma R2 initial：`-0.008850248005256578`
+    - sigma R2 IFWI：`-0.0030364562581208787`
+    - sigma R2 dropout-IFWI：`-0.007638826538945542`
+  - 结论：
+    - 这是当前最有价值的设置：`offset=5`、`steps=500`、`lr=1e-4` 能显著推动参数场离开均匀背景。
+    - 无 dropout 的 waveform misfit 下降更快，但 dropout-IFWI 的 epsilon R2 首次转正。
+    - 这提示后续应考虑分阶段策略：先无 dropout 或低 dropout 快速拟合，再启用 dropout 正则化稳定参数图。
+
+### 历史备注（2026-05-20 至 2026-05-21）
+
+- 之前曾探索 JAX GPU 正演、JAX 自动微分和显式伴随梯度链路。
+- 该路线已停止作为主线，相关源码和配置已清理。
+- 旧实验记录不再作为当前复现方案的依据；当前方案以 PyTorch 版 GPR IFWI/dropout-IFWI 为准，FR-INR 只作为网络架构标准。
+
+### 2026-06-07（长训练与视觉检查）
+
+- FR-INR offset5 + `lr=1e-4` train100：
+  - config：`configs/paper_cross_ifwi_frinr_halfshot500_offset5_lr1e4_train100.json`
+  - 结果：
+    - training loss：`0.16871361434459686` → `0.15988904237747192`
+    - min training loss：`0.14788681268692017`
+    - eval relative MSE：`1.0083036312377332e-03` → `9.555500055550602e-04`
+    - final epsilon range：`2.971015453338623` → `4.777853965759277`
+    - final sigma range：`0.0018716318299993873` → `0.004571948200464249`
+  - 视觉检查：
+    - `figures/parameter_maps.png` 中参数场已经明显离开均匀背景。
+    - epsilon 仍是低频斑块，没有清晰 cross-shape。
+    - sigma 有模糊异常区域，但不是清晰十字。
+  - 结论：
+    - 单纯长跑会在约 `50 epoch` 后 loss 反弹，说明需要早停或学习率衰减。
+
+- 训练代码更新：
+  - `train_from_config` 现在保存：
+    - `best_epsilon.npy`
+    - `best_sigma.npy`
+    - `best_synthetic_data.npy`
+  - `metrics.json` 新增：
+    - `best.epoch`
+    - `best.loss`
+    - `data_misfit.best`
+  - 支持训练配置：
+    - `training.learning_rate_milestones`
+    - `training.learning_rate_gamma`
+  - 目的：
+    - 长训练不再只保留最后一个可能已经变坏的模型。
+    - 可以使用 step decay 减少后期振荡。
+
+- FR-INR offset5 + `lr=1e-4` decay train100：
+  - config：`configs/paper_cross_ifwi_frinr_halfshot500_offset5_lr1e4_decay_train100.json`
+  - 设置：
+    - 前 50 epoch 学习率 `1e-4`
+    - 第 50 epoch 后衰减到 `2e-5`
+  - 结果：
+    - training loss：`0.16871361434459686` → `0.14815610647201538`
+    - best epoch：`54`
+    - best loss：`0.147963285446167`
+    - initial relative MSE：`1.0083036312377332e-03`
+    - best relative MSE：`8.842909407361788e-04`
+    - final relative MSE：`8.855155589145659e-04`
+    - best epsilon range：`3.6204662322998047` → `4.2691168785095215`
+    - best sigma range：`0.002558324718847871` → `0.0038297970313578844`
+  - 视觉检查：
+    - `figures/parameter_maps.png`
+    - `best_review/figures/parameter_maps.png`
+    - 比不衰减 train100 更稳定，但仍没有清晰十字。
+  - 结论：
+    - 学习率衰减有效改善 waveform misfit。
+    - FR-INR 当前更倾向低频背景扰动，不够快地产生 cross-shape 结构。
+
+- SIREN 论文原始网络路线对照：
+  - config：`configs/paper_cross_ifwi_siren_halfshot500_offset5_lr1e4_decay_train50.json`
+  - `lr=1e-4` 结果：
+    - 第 7 epoch 出现 NaN。
+    - 推断：标准化参数映射无物理约束时，SIREN 更容易把参数推到非物理范围，导致 FDTD 不稳定。
+  - config：`configs/paper_cross_ifwi_siren_halfshot500_offset5_lr3e5_decay_train50.json`
+  - `lr=3e-5` 结果：
+    - 第 25 epoch 出现 inf。
+  - 处理：
+    - `ParameterStats` 新增可选物理 clamp：
+      - `epsilon_min`
+      - `epsilon_max`
+      - `sigma_min`
+      - `sigma_max`
+    - 仍使用论文式 `m = m_tilde * std + mean`，但进入 FDTD 前限制到合理物理范围。
+
+- bounded SIREN offset5 + `lr=3e-5` decay train50：
+  - config：`configs/paper_cross_ifwi_siren_bounded_halfshot500_offset5_lr3e5_decay_train50.json`
+  - 设置：
+    - `architecture=siren`
+    - `omega0=30`
+    - `hidden_features=128`
+    - `hidden_layers=4`
+    - `epsilon_min=1.0`
+    - `epsilon_max=8.0`
+    - `sigma_min=0.0001`
+    - `sigma_max=0.01`
+  - 结果：
+    - training loss：`0.17934459447860718` → `0.08562520891427994`
+    - best epoch：`34`
+    - best loss：`0.0726962462067604`
+    - initial relative MSE：`1.0718387763148885e-03`
+    - best relative MSE：`4.3446340943568046e-04`
+    - final relative MSE：`5.234966838981369e-04`
+    - best epsilon range：`1.0` → `5.218201637268066`
+    - best sigma range：`9.999999747378752e-05` → `0.006630863528698683`
+  - 视觉检查：
+    - `figures/parameter_maps.png`
+    - `best_review/figures/parameter_maps.png`
+    - 上左低值 cross anomaly 已经出现暗色十字状响应。
+    - 下右高值 cross anomaly 仍不清晰，背景噪声较强。
+  - 结论：
+    - bounded SIREN 明显优于当前 FR-INR 路线，更接近论文原始 IFWI 网络。
+    - 当前已有“十字开始出现”的证据，但还不是论文级重建。
+    - 下一步建议优先沿 bounded SIREN 继续：
+      - 加 dropout 版本。
+      - 增加 full-shot `32/64/500`。
+      - 使用 best checkpoint/early stopping，而不是只看 final。
+
+## 2026-06-07 继续长跑与视觉检查
+
+- 新增 dropout bounded SIREN 配置：
+  - config：`configs/paper_cross_dropout_ifwi_siren_bounded_halfshot500_offset5_lr3e5_decay_train50_clean.json`
+  - run：`runs/paper_cross_dropout_ifwi_siren_bounded_halfshot500_offset5_lr3e5_decay_train50_clean`
+  - 结果：
+    - training loss：`0.36068323254585266` → `0.3640781342983246`
+    - best epoch：`33`
+    - best loss：`0.2716311514377594`
+    - initial relative MSE：`1.7318468570533152e-03`
+    - best relative MSE：`1.623382395174641e-03`
+    - final relative MSE：`1.437731711430516e-03`
+  - 视觉检查：
+    - `figures/parameter_maps.png`
+    - `best_review/figures/parameter_maps.png`
+    - `runs/comparisons/paper_cross_siren_bounded_halfshot500_offset5_lr3e5_decay_train50_ifwi_vs_dropout/parameter_comparison.png`
+  - 结论：
+    - dropout=0.2 当前明显劣于无 dropout IFWI。
+    - loss 更高且波动更强，参数图中没有形成清晰十字。
+    - 该设置不宜作为当前主线。
+
+- 新增无 dropout bounded SIREN 长训练：
+  - config：`configs/paper_cross_ifwi_siren_bounded_halfshot500_offset5_lr3e5_decay_train100.json`
+  - run：`runs/paper_cross_ifwi_siren_bounded_halfshot500_offset5_lr3e5_decay_train100`
+  - 设置：
+    - `epochs=100`
+    - `learning_rate=3e-5`
+    - `learning_rate_milestones=[50, 80]`
+    - `learning_rate_gamma=0.2`
+  - 结果：
+    - training loss：`0.17934459447860718` → `0.11446994543075562`
+    - best epoch：`27`
+    - best loss：`0.0838451161980629`
+    - initial relative MSE：`1.0718387763148885e-03`
+    - best relative MSE：`5.01093732218439e-04`
+    - final relative MSE：`6.837114358482127e-04`
+    - best epsilon range：`1.0` → `5.227601051330566`
+    - final epsilon range：`1.0` → `5.8581318855285645`
+    - best sigma range：`9.999999747378752e-05` → `0.006529850885272026`
+    - final sigma range：`9.999999747378752e-05` → `0.009999999776482582`
+  - 视觉检查：
+    - `figures/parameter_maps.png`
+    - `best_review/figures/parameter_maps.png`
+    - `figures/error_maps.png`
+    - `figures/anomaly_maps_best.png`
+  - 结论：
+    - 上左低值 cross anomaly 已经比较明确地出现。
+    - 下右高值 cross anomaly 只有局部正异常，仍未形成完整十字。
+    - 继续训练到 100 epoch 不如直接保留 best checkpoint；当前最佳点在第 27 epoch，后续出现明显反弹。
+    - 下一步更可能有效的方向不是盲目加 epoch，而是增加观测信息量或约束：
+      - full-shot `source_count=32, receiver_count=64`
+      - 更小学习率/更早 early stopping
+      - 分阶段反演或增强高值十字的观测敏感性诊断
+
+- full-shot bounded SIREN：
+  - config：`configs/paper_cross_ifwi_siren_bounded_fullshot500_offset5_lr3e5_decay_train50.json`
+  - run：`runs/paper_cross_ifwi_siren_bounded_fullshot500_offset5_lr3e5_decay_train50`
+  - 设置：
+    - `source_count=32`
+    - `receiver_count=64`
+    - `steps=500`
+    - `epochs=50`
+  - 结果：
+    - training loss：`0.1824956238269806` → `0.06238396093249321`
+    - best epoch：`50`
+    - best loss：`0.06238396093249321`
+    - initial relative MSE：`1.9423974424553118e-03`
+    - best relative MSE：`6.639855112025134e-04`
+    - final relative MSE：`6.604121107926532e-04`
+    - best epsilon range：`1.0` → `5.095173358917236`
+    - best sigma range：`9.999999747378752e-05` → `0.007096241228282452`
+  - 视觉检查：
+    - `figures/parameter_maps.png`
+    - `figures/anomaly_maps_best.png`
+    - `figures/error_maps.png`
+    - `figures/loss_curve.png`
+  - 结论：
+    - full-shot loss 单调下降，比 half-shot 100 epoch 的反弹更健康。
+    - 上左低值 cross anomaly 仍然较清楚。
+    - 下右高值 cross anomaly 在 sigma 中有局部正异常，但 epsilon 中仍不完整，尚未达到论文图中的清晰双十字。
+    - 下一步优先：沿 full-shot 继续训练到 100 epoch 或使用更小 `lr=1e-5` 微调；同时考虑把 loss 分成 epsilon/sigma 敏感性诊断，确认下右高值异常是否被当前采集几何充分照明。
+
+## 2026-06-07 full-shot 长训练与双参数串扰诊断
+
+- full-shot bounded SIREN train100：
+  - config：`configs/paper_cross_ifwi_siren_bounded_fullshot500_offset5_lr3e5_decay_train100.json`
+  - run：`runs/paper_cross_ifwi_siren_bounded_fullshot500_offset5_lr3e5_decay_train100`
+  - 设置：
+    - `source_count=32`
+    - `receiver_count=64`
+    - `steps=500`
+    - `epochs=100`
+    - `learning_rate=3e-5`
+    - `learning_rate_milestones=[50, 80]`
+  - 结果：
+    - training loss：`0.1824956238269806` → `0.04728258401155472`
+    - best epoch：`100`
+    - best loss：`0.04728258401155472`
+    - initial relative MSE：`1.9423974424553118e-03`
+    - best relative MSE：`5.032535630672869e-04`
+    - final relative MSE：`5.026923098766586e-04`
+  - ROI 量化：
+    - 左上低值 cross：
+      - epsilon mean：`1.702151`，真值 `1.0`
+      - sigma mean：`0.00259153`，真值 `0.0001`
+    - 右下高值 cross：
+      - epsilon mean：`3.511547`，真值 `8.0`
+      - sigma mean：`0.00539180`，真值 `0.01`
+  - 视觉检查：
+    - `figures/parameter_maps.png`
+    - `figures/anomaly_maps_best.png`
+    - `figures/error_maps.png`
+  - 结论：
+    - loss 继续健康下降。
+    - 左上低值 epsilon cross 已经清楚。
+    - 右下高值 sigma 有明显正异常，但右下 epsilon 仍未恢复为高值 cross。
+
+- 异常敏感性诊断：
+  - 产物：`runs/diagnostics/fullshot500_offset5_anomaly_sensitivity.json`
+  - full-shot/offset5/500 steps 下，相对 observed power 的扰动：
+    - `right_eps_only`：`1.0380674256372814e-03`
+    - `right_sig_only`：`1.1410528530689938e-04`
+    - `left_eps_only`：`8.587362449645115e-04`
+    - `left_sig_only`：`7.983882637997236e-05`
+  - 结论：
+    - 右下 epsilon 并非完全不可见；单独右下 epsilon 的数据扰动比单独右下 sigma 更强。
+    - 当前问题更像双参数耦合/串扰，而不是采集几何完全照不到右下 epsilon。
+
+- 新增诊断开关：
+  - `training.freeze_sigma`
+  - `training.freeze_epsilon`
+  - `training.freeze_sigma_epochs`
+  - `training.freeze_epsilon_epochs`
+  - 用途：
+    - 固定一个参数，检查另一个参数能否独立承担反演。
+    - 分阶段冻结一个参数，测试 staged IFWI 是否缓解双参数串扰。
+
+- epsilon-only full-shot：
+  - config：`configs/paper_cross_ifwi_siren_bounded_fullshot500_offset5_epsilon_only_lr3e5_decay_train50.json`
+  - run：`runs/paper_cross_ifwi_siren_bounded_fullshot500_offset5_epsilon_only_lr3e5_decay_train50`
+  - 设置：
+    - `freeze_sigma=true`
+    - `epochs=50`
+  - 结果：
+    - training loss：`0.18244768679141998` → `0.0835556834936142`
+    - best relative MSE：`8.893274351101298e-04`
+  - ROI 量化：
+    - 左上 epsilon mean：`2.321209`
+    - 右下 epsilon mean：`3.369517`
+  - 结论：
+    - 固定 sigma 后，epsilon 仍优先恢复左上低值 anomaly。
+    - 右下高值 epsilon 仍没有正确出现，说明问题不只是 sigma 抢解释权。
+
+- staged epsilon-first then joint：
+  - config：`configs/paper_cross_ifwi_siren_bounded_fullshot500_offset5_staged_eps50_joint50_lr3e5_decay_train100.json`
+  - run：`runs/paper_cross_ifwi_siren_bounded_fullshot500_offset5_staged_eps50_joint50_lr3e5_decay_train100`
+  - 设置：
+    - 前 50 epoch：`freeze_sigma_epochs=50`
+    - 后 50 epoch：epsilon/sigma 联合训练
+    - `learning_rate_milestones=[75, 90]`
+  - 结果：
+    - training loss：`0.18244768679141998` → `0.06321028620004654`
+    - best relative MSE：`6.72780595266138e-04`
+  - ROI 量化：
+    - 左上低值 cross：
+      - epsilon mean：`1.345770`
+      - sigma mean：`0.00167522`
+    - 右下高值 cross：
+      - epsilon mean：`2.824425`
+      - sigma mean：`0.00436311`
+  - 视觉检查：
+    - 左上低值 cross 更干净。
+    - 右下高值 epsilon 更差，仍然没有变成高值 cross。
+  - 结论：
+    - staged 策略改善左上低值 anomaly，但没有解决右下高值 epsilon 的错误符号。
+    - 下一步不应继续盲目增加 epoch；更值得检查：
+      - 论文原始 cross model 的网格/坐标/收发排列是否与当前实现完全一致。
+      - epsilon/sigma 参数尺度、归一化和优化权重是否需要论文式设置。
+      - 是否需要加入论文中的 regularization/dropout 具体日程，而不是固定 dropout=0.2。
+
+## 2026-06-07 paper setting audit 与复现实验
+
+- 论文 Cross-shape setting 核对：
+  - 论文：`Implicit multiparameter full waveform inversion of multioffset ground penetrating radar data`。
+  - 参考链接：`https://academic.oup.com/gji/article/240/2/904/7908524`。
+  - 本地核对文档：`paper_cross_setting_audit.md`。
+  - 核心设置：
+    - `101 x 101` 网格，`dx=dz=0.1 m`。
+    - 背景：`epsilon_r=4`，`sigma=3 mS/m`。
+    - 左上 anomaly：`epsilon_r=1`，`sigma=0.1 mS/m`。
+    - 右下 anomaly：`epsilon_r=8`，`sigma=10 mS/m`。
+    - `32` sources，`64` receivers。
+    - Ricker source dominant frequency `100 MHz`。
+    - recording time `100 ns`，time interval `0.2 ns`，代码中对应 `steps=500`。
+    - MLP：`4` hidden layers，`128` neurons/layer，sine activation，`omega0=30`。
+    - dropout-IFWI 默认 `p=0.2`。
+
+- Dropout-IFWI strict paper-aligned attempt：
+  - config：`configs/paper_cross_dropout_ifwi_siren_paper_aligned_offset0_lr3e5_train150.json`
+  - run：`runs/paper_cross_dropout_ifwi_siren_paper_aligned_offset0_lr3e5_train150`
+  - 设置：
+    - `offset=0` perimeter acquisition。
+    - `dropout=0.2`。
+    - `pretrain_epochs=1000`。
+    - 使用 Cross-shape 真模型全局 mean/std。
+  - 结果：
+    - training loss：`0.06417275220155716` → `0.0632917582988739`。
+    - best epoch：`146`，best loss：`0.0632382184267044`。
+    - best relative MSE：`6.908953836740868e-04`。
+    - final relative MSE：`6.918224458887446e-04`。
+  - ROI 量化：
+    - best 左上 epsilon/sigma mean：`3.993058 / 0.00306030`。
+    - best 右下 epsilon/sigma mean：`3.992606 / 0.00306486`。
+  - 视觉检查：
+    - `runs/paper_cross_dropout_ifwi_siren_paper_aligned_offset0_lr3e5_train150/figures/parameter_maps.png`
+    - `runs/paper_cross_dropout_ifwi_siren_paper_aligned_offset0_lr3e5_train150/figures/loss_curve.png`
+  - 结论：
+    - 该 strict dropout 版本基本停留在 homogeneous initial 附近。
+    - 可能原因：`pretrain_epochs=1000` 加 dropout 使网络过于接近常数场，当前 solver/gradient bridge 下难以撬动。
+
+- IFWI no-dropout paper-aligned geometry：
+  - config：`configs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e5_pretrain50_train150.json`
+  - run：`runs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e5_pretrain50_train150`
+  - 设置：
+    - `offset=0` perimeter acquisition。
+    - `dropout=0.0`。
+    - `pretrain_epochs=50`。
+    - `epsilon_mean=4.0`，`epsilon_std=1.0`，`sigma_mean=0.003`，`sigma_std=0.0015`。
+  - 结果：
+    - best epoch：`16`，best loss：`0.0728534609079361`。
+    - final epoch 150 loss：`0.23135381937026978`。
+    - initial relative MSE：`8.39728385524305e-04`。
+    - best relative MSE：`7.959445941776526e-04`。
+    - final relative MSE：`2.5384360853193577e-03`。
+  - ROI 量化：
+    - best 左上 epsilon/sigma mean：`3.484637 / 0.00343668`。
+    - best 右下 epsilon/sigma mean：`3.872616 / 0.00357573`。
+    - final 左上 epsilon/sigma mean：`1.925004 / 0.00302072`。
+    - final 右下 epsilon/sigma mean：`3.594479 / 0.00496558`。
+  - 视觉检查：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e5_pretrain50_train150/figures/best_vs_final_parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e5_pretrain50_train150/figures/loss_curve.png`
+  - 结论：
+    - final 图中左上低 epsilon cross 清楚出现，右下 sigma 有热区。
+    - 右下高 epsilon cross 仍未按论文恢复。
+    - loss 在 epoch 16 后变差，说明当前实现需要 early stopping 或更早/更强的学习率衰减。
+    - 当前差距更可能来自梯度尺度、正则化/优化日程、CPU/MPI bridge 与论文原 solver 的差异，而不是 FR-INR 或 SIREN 架构本身。
+
+- IFWI no-dropout long-epoch run：
+  - 用户判断：
+    - FWI/IFWI 可能需要 `1000+` inversion epochs，前面 `150` epoch 可能不足。
+  - config：`configs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e6_pretrain50_train1000.json`
+  - run：`runs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e6_pretrain50_train1000`
+  - 设置：
+    - `offset=0` perimeter acquisition。
+    - `dropout=0.0`。
+    - `pretrain_epochs=50`。
+    - `epochs=1000`。
+    - `learning_rate=3e-6`。
+    - `learning_rate_milestones=[600, 850]`，`gamma=0.3`。
+  - 结果：
+    - initial loss：`0.07686103135347366`。
+    - best epoch：`42`，best loss：`0.046480342745780945`。
+    - final epoch 1000 loss：`0.07226390391588211`。
+    - initial relative MSE：`8.39728385524305e-04`。
+    - best relative MSE：`5.078108333222933e-04`。
+    - final relative MSE：`7.896587805996718e-04`。
+  - ROI 量化：
+    - best 左上 epsilon/sigma mean：`3.551028 / 0.00329939`。
+    - best 右下 epsilon/sigma mean：`3.891618 / 0.00344870`。
+    - epoch 250 左上 epsilon/sigma mean：`1.979603 / 0.00284201`。
+    - epoch 250 右下 epsilon/sigma mean：`3.608308 / 0.00469434`。
+    - final 左上 epsilon/sigma mean：`1.339228 / 0.00142889`。
+    - final 右下 epsilon/sigma mean：`3.428050 / 0.00630039`。
+  - 视觉检查：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e6_pretrain50_train1000/figures/best_epoch250_final_parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e6_pretrain50_train1000/figures/loss_curve.png`
+  - 结论：
+    - 用户关于 epoch 数过少的判断部分成立：`1000` epoch 明显比 `150` epoch 更能生成结构。
+    - 左上低 epsilon cross 已经清楚出现。
+    - 右下 conductivity 高异常明显增强。
+    - 但右下高 epsilon cross 仍未恢复为论文的黄色十字，反而被低/混乱 epsilon 与高 sigma 共同解释。
+    - 下一步应重点处理 epsilon/sigma 串扰和梯度尺度，而不是只继续增加 epoch。
+
+## 2026-06-08 梯度归一化与观测系统核对
+
+- 论文细节判断：
+  - 论文给出了 Cross-shape 模型、source/receiver 数量、波形频率、记录时长、网络结构和 dropout 默认值。
+  - 论文没有明确给出 Cross-shape IFWI 的 learning rate、epoch 数、pretrain epoch、梯度尺度处理、loss 权重、early stopping 细节。
+  - 因此当前复现必须记录这些未公开实现选择，不能默认认为某一组优化超参就是论文原设置。
+
+- 当前观测系统：
+  - config 参考：`configs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e6_pretrain50_train1000.json`
+  - model：`101 x 101`，`dx=dz=0.1 m`，物理范围约 `10 m x 10 m`。
+  - sources：`32` 个发射天线，沿边界均匀采样。
+  - receivers：`64` 个接收天线，沿同一边界均匀采样。
+  - 顺序：左上角开始，沿 top edge -> right edge -> bottom edge -> left edge 顺时针绕一圈。
+  - 坐标：代码坐标为 grid `(x, z)`，物理坐标为 `(x*0.1 m, z*0.1 m)`。
+  - 诊断图：`runs/diagnostics/paper_cross_acquisition_geometry.png`
+
+- 新增梯度归一化：
+  - 修改：
+    - `src/ifwi_gpr/solver_bridge/cpu_mpi.py`
+    - `src/ifwi_gpr/autograd.py`
+    - `src/ifwi_gpr/train.py`
+    - `tests/test_autograd_helpers.py`
+  - 新增 solver settings：
+    - `gradient_normalization`
+    - `epsilon_gradient_weight`
+    - `sigma_gradient_weight`
+  - 当前支持模式：
+    - `none`：保持原始梯度。
+    - `match_rms`：把 epsilon/sigma 梯度通道的 RMS 调整到同一几何平均尺度。
+  - 测试：
+    - `python -m unittest discover -s tests -v`
+    - 结果：`16` tests OK。
+
+- Gradient-normalized IFWI probe：
+  - config：`configs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000.json`
+  - partial run：`runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000`
+  - 状态：
+    - 跑到 epoch `250` 后手动停止。
+    - 原因：方向不优，继续跑预计不能解决右下 high-epsilon 问题。
+  - 对比图：
+    - `runs/diagnostics/plain_vs_gradnorm_epoch250.png`
+  - epoch 250 ROI 对比：
+    - plain：
+      - 左上 epsilon/sigma mean：`1.979603 / 0.00284201`
+      - 右下 epsilon/sigma mean：`3.608308 / 0.00469434`
+    - gradnorm：
+      - 左上 epsilon/sigma mean：`2.257721 / 0.00281870`
+      - 右下 epsilon/sigma mean：`3.444789 / 0.00301282`
+  - 结论：
+    - `match_rms` 归一化确实压住了 sigma 更新。
+    - 但右下 epsilon 仍没有向 `8` 上升，反而继续下降。
+    - 说明问题不只是 sigma 梯度量级过大，更可能是 epsilon/sigma 数据解释存在非唯一性或当前伴随梯度尺度/符号/物理参数化仍有问题。
+    - 下一步更值得尝试：
+      - 分阶段反演：先固定 sigma 恢复 epsilon，然后固定/弱化 epsilon 恢复 sigma。
+      - 对右下 high-epsilon 的 sign/gradient 做有限差分方向检查。
+      - 检查 conductivity 是否应以 mS/m 作为网络变量，而不是直接用 S/m。
+
+- Epoch 250 梯度可视化：
+  - 目标：
+    - 对 `gradnorm` probe 在 epoch `250` 的物理参数梯度进行复算和可视化。
+  - 计算方式：
+    - 使用 `epoch_250_epsilon.npy` 和 `epoch_250_sigma.npy` 重新正演。
+    - 使用 `observed_data.npy` 构造 MSE loss 的 `grad_output = 2*(d_syn-d_obs)/N`。
+    - 调用 CPU/MPI 伴随梯度，得到 raw `dL/d epsilon` 和 `dL/d sigma`。
+    - 再应用 `match_rms` 得到 normalized gradients。
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_raw_grad_epsilon.npy`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_raw_grad_sigma.npy`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_norm_grad_epsilon.npy`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_norm_grad_sigma.npy`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_gradient_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_gradient_summary.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_gradient_roi_summary.json`
+  - 梯度量级：
+    - raw epsilon gradient RMS：`5.573044832442066e-05`
+    - raw sigma gradient RMS：`0.00605674501905036`
+    - raw sigma/epsilon RMS ratio：约 `108.69`
+    - normalized epsilon gradient RMS：`0.0005809863243694379`
+    - normalized sigma gradient RMS：`0.0005809863373721811`
+  - ROI 梯度方向：
+    - 右下 high-epsilon 区域：
+      - normalized `grad_epsilon` mean：`2.0297129594837315e-05`
+      - normalized descent direction `-grad_epsilon` mean：`-2.0297129594837315e-05`
+      - 解释：梯度下降仍倾向于降低 epsilon，而不是把 epsilon 推向 `8`。
+      - normalized `grad_sigma` mean：`-0.000146066551678814`
+      - normalized descent direction `-grad_sigma` mean：`0.000146066551678814`
+      - 解释：梯度下降倾向于升高 sigma。
+  - 结论：
+    - 梯度可视化解释了右下异常的错误演化：当前残差方向更支持“提高 sigma、降低/不提高 epsilon”，而不是论文目标中的“提高 epsilon 和 sigma”。
+    - 单纯做 epsilon/sigma RMS 归一化不能改变这个方向性问题。
+
+- 右下 epsilon 有限差分方向检查：
+  - 目标：
+    - 验证 epoch `250` 右下 high-epsilon 区域的伴随梯度方向是否和真实 loss 变化一致。
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_finite_difference_gradient_check.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_right_epsilon_fd_sweep.json`
+  - 右下 epsilon sweep：
+    - delta `0.005`：central FD derivative `-7.16644187437332e-05`
+    - delta `0.01`：central FD derivative `-7.155916432743936e-05`
+    - delta `0.02`：central FD derivative `-7.157462148937865e-05`
+    - delta `0.05`：central FD derivative `-7.189723283784755e-05`
+    - delta `0.1`：central FD derivative `-7.300845653618326e-05`
+    - raw adjoint gradient sum on right epsilon ROI：`0.000586040667258203`
+  - 解释：
+    - 有限差分稳定显示：把右下 epsilon 增大一点，loss 会略微下降。
+    - 但当前伴随 epsilon 梯度在该 ROI 的和是正的，梯度下降会倾向于降低 epsilon。
+    - 这说明右下 epsilon 不出来不只是优化问题，也可能是 CPU/MPI bridge 中 epsilon 伴随梯度公式/尺度/索引存在局部不一致。
+  - 下一步优先级：
+    - 优先审查和验证 epsilon 梯度公式，而不是继续调 dropout 或训练 epoch。
+    - 对几个单点/小块 epsilon perturbation 做有限差分 heatmap，与伴随梯度逐点对比。
+    - 检查 `gradient.py` 中 epsilon 梯度 `ep0 * adjoint_field * forward_diff` 的符号、时间索引、dt 缩放和场采样是否与 FDTD 更新式一致。
+
+## 2026-06-08 epsilon 梯度块状有限差分与时间索引诊断
+
+- 背景：
+  - 用户指出右下 high-epsilon 区域没有出现明显 epsilon 梯度信息，这一现象不合理。
+  - 物理补充：GPR/电磁波速度约为 `v=c/sqrt(epsilon_r)`，因此右下 `epsilon_r=8` 是低速/高介电异常，左上 `epsilon_r=1` 是高速/低介电异常。
+
+- 梯度公式审查：
+  - 当前 CPU/MPI reference gradient 中 epsilon 梯度为：
+    - `grad_eps += ep0 * adjoint_field * forward_diff`
+  - sigma 梯度为：
+    - `grad_sig += adjoint_field * forward_wavefield`
+  - 代码位置：
+    - `E:/sci_research/GPR/marmousi_paper/gpr-inversion/src/gpr_inversion/experiments/overthrust/mode2_eps_then_sig/gradient.py`
+  - 关键发现：
+    - 正演 `update_E` 使用离散系数 `ca` 和 `cb`：
+      - `Ey_new = ca * Ey_old + cb * curlH * dt`
+      - source 项也乘 `cb`
+    - `ca` 和 `cb` 都依赖 epsilon 与 sigma。
+    - 当前 epsilon 梯度公式更像连续方程近似，并没有显式对应 `ca/cb/source` 的离散导数。
+
+- 5x5 epsilon block finite-difference heatmap：
+  - 目标：
+    - 检查 epsilon 伴随梯度和真实有限差分方向在全域块级别是否一致。
+  - 设置：
+    - 状态：`gradnorm` probe 的 epoch `250`。
+    - 将 `101 x 101` 模型划分为 `5 x 5` 块。
+    - 每块 epsilon 分别做 `+0.02` 和 `-0.02` perturbation。
+    - 重新正演计算 central finite-difference derivative。
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_epsilon_block_fd_5x5.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_epsilon_block_fd_5x5.npy`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_epsilon_block_adjoint_sum_5x5.npy`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_epsilon_block_fd_vs_adjoint.png`
+  - 结果：
+    - epsilon 伴随梯度和有限差分只有 `15/25` 个块同号。
+    - 同号率：`0.6`。
+    - 说明 epsilon 梯度不可靠不是只发生在右下异常，而是块级别存在广泛不一致。
+
+- epsilon 梯度时间索引变体测试：
+  - 目标：
+    - 判断 mismatch 是否只是时间索引差一格或整体符号错。
+  - 测试变体：
+    - `current`
+    - `negative_current`
+    - `adjoint_minus1`
+    - `adjoint_plus1`
+    - `forwarddiff_minus1`
+    - `forwarddiff_plus1`
+    - `no_ep0_current`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_epsilon_gradient_variant_compare.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_eps_grad_variant_*.npy`
+  - 结果：
+    - `current`：`15/25` 同号，corrcoef `-0.1661`
+    - `negative_current`：`10/25` 同号，corrcoef `0.1661`
+    - `adjoint_minus1`：`12/25` 同号
+    - `adjoint_plus1`：`14/25` 同号
+    - `forwarddiff_minus1`：`14/25` 同号
+    - `forwarddiff_plus1`：`12/25` 同号
+    - `no_ep0_current`：`15/25` 同号
+  - 结论：
+    - 不是简单整体符号错误。
+    - 不是简单 `k±1` 时间索引偏移。
+    - 更可能是 epsilon 离散梯度公式缺少 `ca/cb/source` 对 epsilon 的离散导数贡献，或当前连续近似不适配该 FDTD 实现。
+
+- 文献核对：
+  - `Two-dimensional permittivity and conductivity imaging by full waveform inversion of multioffset GPR data` 指出，GPR 双参数 FWI 对 permittivity/conductivity 参数尺度非常敏感，需要引入 conductivity scaling factor `beta`；小 `beta` 会惩罚 conductivity，使反演先由 permittivity 主导。
+  - 这支持当前判断：右下 high-epsilon 被 sigma 吃掉和多参数 trade-off 有关；但 finite-difference mismatch 进一步说明当前 epsilon adjoint gradient 本身也需要验证。
+
+  - 下一步：
+    - 不再优先追加 epoch。
+    - 优先构造一个与 `update_E` 的 `ca/cb` 离散更新严格一致的 epsilon 梯度候选，至少先用于离线诊断，与有限差分 heatmap 对比。
+    - 同时设计 `beta` 类参数缩放：把 conductivity 作为 `sigma_r / beta` 或等价地降低 sigma update 权重，使路径先由 epsilon 主导。
+
+- 离散 `ca/cb` epsilon 梯度候选：
+  - 目标：
+    - 检查考虑 `update_E` 中 epsilon-dependent `ca/cb` 的局部导数后，epsilon 梯度是否更接近有限差分块热图。
+  - 候选思路：
+    - 正演内部更新可写作：
+      - `Ey_new = ca(epsilon, sigma) * Ey_old + cb(epsilon, sigma) * curlH * dt`
+    - 利用已存正演波场反推：
+      - `curlH * dt ~= (Ey_new - ca * Ey_old) / cb`
+    - 构造局部导数：
+      - `dEy_new/d epsilon_r ~= dca/d epsilon_r * Ey_old + dcb/d epsilon_r * curlH * dt`
+    - 再与伴随场相乘求和。
+  - 测试变体：
+    - `discrete_ca_cb`
+    - `negative_discrete_ca_cb`
+    - `discrete_adj_minus1`
+    - `discrete_adj_plus1`
+    - `discrete_no_ca`
+    - `discrete_no_cb`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_epsilon_discrete_gradient_variant_compare.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_eps_grad_variant_discrete_*.npy`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_epsilon_fd_current_vs_discrete_candidate.png`
+  - 结果：
+    - `discrete_ca_cb`：`13/25` 同号，corrcoef `0.3752`
+    - `negative_discrete_ca_cb`：`12/25` 同号，corrcoef `-0.3752`
+    - `discrete_adj_minus1`：`15/25` 同号，corrcoef `0.4012`
+    - `discrete_adj_plus1`：`12/25` 同号，corrcoef `0.3314`
+    - `discrete_no_ca`：`12/25` 同号，corrcoef `0.3496`
+    - `discrete_no_cb`：`15/25` 同号，corrcoef `0.3489`
+  - 结论：
+    - 离散 `ca/cb` 候选把相关系数从当前连续式的 `-0.1661` 改善到约 `0.40`。
+    - 但同号率最高仍只有 `15/25`，不能直接作为可靠训练梯度。
+    - 这说明局部 `ca/cb` 导数是必要线索，但伴随源注入、反传更新、source 项、CPML memory 项或时间层配准仍可能缺项。
+
+## 2026-06-08 heartbeat 12:22 autonomous diagnostics
+
+- 环境经验：
+  - 本轮 `rg.exe` 在 PowerShell 中返回 `Access is denied`。
+  - 已按项目规则切换为 `Get-ChildItem ... | Select-String ...` 搜索；后续 heartbeat 若再次遇到该问题，直接用 PowerShell 原生搜索兜底。
+  - 另一次 Python here-string 使用中文绝对路径时被 PowerShell 编码成 `??FWI`，导致 `OSError: Invalid argument`；已改用相对路径读取，避免中文路径在临时脚本里被错误编码。
+
+- 新增诊断脚本：
+  - `src/ifwi_gpr/diagnose_shotwise_gradients.py`
+    - 读取指定 run/epoch。
+    - 对指定炮点做 5x5 epsilon 块级 central finite-difference。
+    - 用与训练一致的 MSE loss 梯度残差 `2 * (synthetic - observed) / N` 调用参考伴随梯度。
+    - 输出每炮 finite-difference heatmap、伴随块和符号匹配图。
+  - `src/ifwi_gpr/diagnose_roi_gradients.py`
+    - 对 32 炮逐炮比较 `left_cross` 与 `right_cross` ROI 中 epsilon/sigma 的有限差分导数和伴随梯度求和。
+    - 目标是避免粗 5x5 块混入 source/receiver 边界效应，直接定位右下 cross 的梯度方向。
+
+- 验证：
+  - 命令：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：
+    - `Ran 16 tests`
+    - `OK`
+
+- 单炮 5x5 epsilon 块级诊断：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.diagnose_shotwise_gradients --run-dir "E:\sci_research\GPR\隐式FWI\runs\paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000" --epoch 250 --shots 0 8 16 24 --blocks 5 --delta 0.05`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_shotwise_epsilon_fd_shots_0_8_16_24.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_shotwise_epsilon_fd_vs_adjoint_0_8_16_24.png`
+  - 结果：
+    - shot 0 `(0,0)`：`21/25` 同号，corrcoef `0.5716`
+    - shot 8 `(0,100)`：`18/25` 同号，corrcoef `-0.3922`
+    - shot 16 `(100,100)`：`16/25` 同号，corrcoef `0.5382`
+    - shot 24 `(100,0)`：`21/25` 同号，corrcoef `0.9737`
+  - 图像观察：
+    - 有限差分强响应集中在靠近炮点/边界的粗块。
+    - 伴随块在同一色标下幅值明显更弱。
+  - 解释：
+    - 粗 5x5 块会混入 source/receiver 边界、source `cb` 依赖和 CPML/边界效应，不足以单独解释右下 cross 失败。
+    - 需要看真正异常体 ROI。
+
+- 逐炮 ROI 有限差分诊断：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.diagnose_roi_gradients --run-dir "E:\sci_research\GPR\隐式FWI\runs\paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000" --epoch 250 --delta-epsilon 0.05 --delta-sigma 0.00005`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_roi_gradient_fd_by_shot.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_roi_gradient_fd_by_shot.png`
+  - 汇总：
+    - `left_cross epsilon`：FD 合计 `0.1778198409`，伴随合计 `0.0545800932`，`30/32` 炮同号，corrcoef `0.9925`
+    - `left_cross sigma`：FD 合计 `21.8389450808`，伴随合计 `7.3321374655`，`32/32` 炮同号，corrcoef `0.9897`
+    - `right_cross epsilon`：FD 合计 `-0.0023007115`，伴随合计 `0.0187533051`，`23/32` 炮同号，corrcoef `0.8327`
+    - `right_cross sigma`：FD 合计 `-41.5956120633`，伴随合计 `-14.6669765413`，`32/32` 炮同号，corrcoef `0.9460`
+  - 右下 epsilon 符号冲突炮点：
+    - `[1, 5, 6, 13, 15, 16, 17, 26, 27]`
+    - 对应 source：
+      - `1 (0,12)`
+      - `5 (0,62)`
+      - `6 (0,75)`
+      - `13 (62,100)`
+      - `15 (87,100)`
+      - `16 (100,100)`
+      - `17 (100,88)`
+      - `26 (75,0)`
+      - `27 (63,0)`
+  - 关键结论：
+    - 左上 cross 的 epsilon 梯度基本可靠。
+    - 两个 cross 的 sigma 梯度方向都基本可靠。
+    - 主要故障集中在 `right_cross epsilon`：全炮 finite-difference 合计为负，说明增加右下 epsilon 会降低 loss；但当前伴随梯度合计为正，梯度下降会降低 epsilon。
+    - 这直接解释了右下 high-epsilon cross 无法恢复，且说明继续单纯增加 epoch 不是首要解法。
+
+- 下一步：
+  - 优先实现/验证更离散一致的 epsilon 伴随梯度，重点审查：
+    - `reverse_time_loop` 中 adjoint source 注入是否应包含 `cb * dt / dx / dz` 或等价尺度。
+    - `ca_r` 用于反传是否与离散转置一致。
+    - source `cb` 对 epsilon 的导数是否需要在源点/近源区域显式加入。
+    - CPML memory 项和边界注入是否对 block FD 有显著影响。
+  - 对 `right_cross epsilon` 做逐炮修正式候选比较，而不是只看全域 5x5 块。
+
+## 2026-06-08 heartbeat 12:52 adjoint variant audit
+
+- 新增诊断脚本：
+  - `src/ifwi_gpr/diagnose_adjoint_roi_variants.py`
+  - 功能：
+    - 读取已有 `epoch_250_roi_gradient_fd_by_shot.json` 中的逐炮 ROI finite-difference 导数。
+    - 对多个伴随反传候选重新计算 epsilon ROI 梯度。
+    - 候选覆盖：
+      - 当前连续式 `ep0 * adjoint * forward_diff`
+      - `ca_r` / 正演 `ca` / `ca=1`
+      - receiver 注入 `raw` / `cb` / `cb * dt / dx / dz`
+      - `adjoint_shift = ±1`
+      - `forward_shift = ±1`
+      - 离散 `ca/cb` 导数候选：
+        - `dca/depsilon_r = ep0 * sigma * dt / (epsilon_abs + sigma*dt/2)^2`
+        - `dcb/depsilon_r = -ep0 / (epsilon_abs + sigma*dt/2)^2`
+        - `dE_new/depsilon_r = dca * E_old + dcb * curlH_dt`
+
+- 验证：
+  - 命令：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：
+    - `Ran 16 tests`
+    - `OK`
+
+- 右下 `right_cross epsilon` 变体审计：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.diagnose_adjoint_roi_variants --run-dir "E:\sci_research\GPR\隐式FWI\runs\paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000" --epoch 250 --roi right_cross`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_right_cross_epsilon_adjoint_variant_audit.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_right_cross_epsilon_adjoint_variant_audit.png`
+  - 关键结果：
+    - 当前公式 `current_ca_r_raw`：
+      - `23/32` 同号，corrcoef `0.8327`
+      - FD sum `-0.00230071`，adjoint sum `+0.0187533`
+      - 合计方向错误。
+    - 仅做一格时间层修正 `ca_r_raw_adj_plus1`：
+      - `30/32` 同号，corrcoef `0.9745`
+      - 但 adjoint sum `+0.00506423`，合计方向仍错误。
+    - 最佳候选 `neg_ca_r_discrete_adj_plus1`：
+      - `32/32` 同号，corrcoef `0.9889`
+      - FD sum `-0.00230071`，adjoint sum `-0.00491688`
+      - mismatch shots `[]`
+      - 同时修正逐炮符号与全炮合计方向。
+
+- 左上 `left_cross epsilon` 交叉验证：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.diagnose_adjoint_roi_variants --run-dir "E:\sci_research\GPR\隐式FWI\runs\paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000" --epoch 250 --roi left_cross`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_left_cross_epsilon_adjoint_variant_audit.json`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_left_cross_epsilon_adjoint_variant_audit.png`
+  - 关键结果：
+    - `neg_ca_r_discrete_adj_plus1`：
+      - `32/32` 同号，corrcoef `0.9839`
+      - FD sum `+0.17782`，adjoint sum `+0.831463`
+      - mismatch shots `[]`
+    - 说明该候选不是只对右下 ROI 偶然有效；它对左上、右下两个 epsilon anomaly ROI 都和 finite-difference 方向一致。
+
+- 当前判断：
+  - 右下 high-epsilon 无法恢复的主因已从“可能的 epoch/lr 不足”推进为更具体的“epsilon 梯度公式不离散一致”。
+  - 单纯 `adjoint_shift=+1` 能显著改善逐炮符号，但不能修正全炮合计方向。
+  - `negative_discrete_ca_cb + adjoint_shift=+1` 是目前最可靠的 epsilon 梯度候选。
+  - 下一步应把该候选实现为训练可选项，只替换 epsilon 梯度、暂时保留参考 sigma 梯度，然后跑 100-250 epoch probe，看右下 epsilon 是否开始升高。
+
+## 2026-06-08 heartbeat 13:22 discrete-epsilon training probe
+
+- 代码变更：
+  - `src/ifwi_gpr/solver_bridge/cpu_mpi.py`
+    - `SolverSettings` 新增 `epsilon_gradient_mode`，默认 `reference`，不影响既有配置。
+    - 新增训练可用的 `negative_discrete_ca_cb_adj_plus1` 模式：
+      - epsilon 梯度使用离散 `ca/cb` 导数候选：
+        - `dca/depsilon_r = ep0 * sigma * dt / (epsilon_abs + sigma*dt/2)^2`
+        - `dcb/depsilon_r = -ep0 / (epsilon_abs + sigma*dt/2)^2`
+        - `dE_new/depsilon_r = dca * E_old + dcb * curlH_dt`
+      - 使用 `adjoint_idx = k + 1`。
+      - 对离散候选整体取负号，与 ROI finite-difference 审计一致。
+      - sigma 梯度暂时保留参考连续式的 `adjoint_idx = k`，避免同时改变两个参数通道。
+  - `src/ifwi_gpr/train.py`
+    - 从 config 读取 `solver.epsilon_gradient_mode`。
+  - 新增配置：
+    - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120.json`
+
+- 验证：
+  - 命令：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：
+    - `Ran 16 tests`
+    - `OK`
+  - dry-run：
+    - `epsilon_gradient_mode= negative_discrete_ca_cb_adj_plus1`
+
+- 训练 probe：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120.json"`
+  - 注意：
+    - 命令最初在 30 min tool timeout 时尚未结束，但 Python 训练进程继续后台运行。
+    - 训练最终正常写出 `final_epsilon.npy`、`best_epsilon.npy`、`metrics.json` 和 figures。
+    - 最终确认后台训练进程已退出。
+  - Run：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120/figures/parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120/figures/loss_curve.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120/figures/epoch1_40_80_discrete_epsilon_probe_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120/metrics.json`
+
+- Loss：
+  - epoch 1 loss：`0.0768610314`
+  - best epoch：`51`
+  - best loss：`0.0483082198`
+  - final epoch 120 loss：`0.0729257762`
+  - 解释：
+    - 数据 loss 在 epoch 51 后上升，说明新 epsilon 梯度方向虽然修正了 ROI 趋势，但当前 LR/scheduler 对全数据 misfit 不稳定。
+
+- ROI 均值趋势：
+  - `left_cross epsilon`：
+    - epoch 1：`3.999256`
+    - epoch 20：`3.862752`
+    - epoch 40：`3.662086`
+    - epoch 60：`3.442421`
+    - epoch 80：`3.317455`
+    - epoch 100：`3.289644`
+    - epoch 120：`3.267344`
+  - `right_cross epsilon`：
+    - epoch 1：`4.000874`
+    - epoch 20：`4.042940`
+    - epoch 40：`4.098381`
+    - epoch 60：`4.157398`
+    - epoch 80：`4.200909`
+    - epoch 100：`4.210436`
+    - epoch 120：`4.218783`
+  - `left_cross sigma`：
+    - epoch 1：`0.00298376`
+    - epoch 120：`0.00292002`
+  - `right_cross sigma`：
+    - epoch 1：`0.00300664`
+    - epoch 120：`0.00309776`
+
+- Visual verdict：
+  - 左上低 epsilon cross 已明显出现。
+  - 右下高 epsilon 区域开始从背景向高值方向抬升，但仍偏弥散，尚未形成论文图中的干净十字。
+  - sigma 结构仍弱，右下高 sigma 只轻微升高。
+
+- 与旧 probe 对比：
+  - 旧 `match_rms` reference-gradient probe 到 epoch 250 时，右下 epsilon mean 约 `3.444789`，方向是下降。
+  - 新 `negative_discrete_ca_cb_adj_plus1` probe 到 epoch 120 时，右下 epsilon mean `4.218783`，方向是上升。
+  - 说明“右下 high-epsilon 无法繁衍”的主要障碍已被显著缓解。
+
+- 下一步：
+  - 训练稳定性优先：
+    - 把 LR 从 `3e-6` 降到 `1e-6` 或 `1.5e-6`。
+    - 或在 epoch 50 左右 early stop / 保存 ROI-aware checkpoint。
+    - 调整 scheduler，避免 epoch 51 后 loss 反弹。
+  - 进一步诊断：
+    - 用新梯度模式重跑 ROI finite-difference audit，确认训练中后期仍同向。
+    - 加入 ROI/time snapshot 曲线保存，避免只靠最终图判断。
+
+## 2026-06-08 heartbeat 14:37 lr1e-6 stability probe
+
+- 新增配置：
+  - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr1e6_pretrain50_train80.json`
+  - 相对上一轮 `lr3e-6` discrete-epsilon probe，只改：
+    - `training.epochs = 80`
+    - `training.learning_rate = 1e-6`
+    - `training.learning_rate_milestones = [60, 75]`
+  - 保留：
+    - `solver.epsilon_gradient_mode = negative_discrete_ca_cb_adj_plus1`
+    - `gradient_normalization = match_rms`
+    - paper-aligned perimeter acquisition。
+
+- 验证：
+  - 命令：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：
+    - `Ran 16 tests`
+    - `OK`
+  - dry-run：
+    - `lr=1e-6`
+    - `epsilon_gradient_mode= negative_discrete_ca_cb_adj_plus1`
+
+- 训练：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr1e6_pretrain50_train80.json"`
+  - Run：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr1e6_pretrain50_train80`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr1e6_pretrain50_train80/figures/parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr1e6_pretrain50_train80/figures/loss_curve.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr1e6_pretrain50_train80/metrics.json`
+
+- Loss：
+  - epoch 1 loss：`0.0768610314`
+  - best epoch：`80`
+  - best/final loss：`0.0518485345`
+  - 结论：
+    - 相比 `lr3e-6` 在 epoch 51 后反弹，`lr1e-6` 训练曲线单调下降，稳定性明显更好。
+
+- ROI 均值趋势：
+  - `left_cross epsilon`：
+    - epoch 1：`3.999256`
+    - epoch 20：`3.959980`
+    - epoch 40：`3.898215`
+    - epoch 60：`3.819303`
+    - epoch 80：`3.793117`
+  - `right_cross epsilon`：
+    - epoch 1：`4.000874`
+    - epoch 20：`4.013847`
+    - epoch 40：`4.031537`
+    - epoch 60：`4.051698`
+    - epoch 80：`4.057909`
+  - `right_cross sigma`：
+    - epoch 1：`0.00300664`
+    - epoch 80：`0.00302463`
+
+- Visual verdict：
+  - `lr1e-6` 最终图更平滑、更稳，但 cross 结构明显弱于 `lr3e-6` epoch 80/120。
+  - 右下 epsilon 方向仍为上升，但幅度太小。
+
+- 结论：
+  - `lr1e-6` 稳定但太慢。
+  - `lr3e-6` 右下 epsilon 上升明显，但 data loss 后期过冲。
+  - 下一步推荐：
+    - 测试 `lr=1.5e-6` 或 `2e-6`，训练 `120-160` epoch。
+    - 或维持 `3e-6` 但在 epoch 50 左右 early stop / 使用 best checkpoint。
+
+## 2026-06-08 heartbeat 15:19 lr2e-6 middle-ground probe
+
+- 新增配置：
+  - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_pretrain50_train100.json`
+  - 相对 `lr1e-6` probe，只改：
+    - `training.epochs = 100`
+    - `training.learning_rate = 2e-6`
+    - `training.learning_rate_milestones = [75, 92]`
+  - 保留：
+    - `solver.epsilon_gradient_mode = negative_discrete_ca_cb_adj_plus1`
+    - `gradient_normalization = match_rms`
+    - paper-aligned perimeter acquisition。
+
+- 验证：
+  - 命令：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：
+    - `Ran 16 tests`
+    - `OK`
+  - dry-run：
+    - `lr=2e-6`
+    - `epochs=100`
+    - `epsilon_gradient_mode= negative_discrete_ca_cb_adj_plus1`
+
+- 训练：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_pretrain50_train100.json"`
+  - Run：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_pretrain50_train100`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_pretrain50_train100/figures/parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_pretrain50_train100/figures/loss_curve.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_pretrain50_train100/metrics.json`
+
+- Loss：
+  - epoch 1 loss：`0.0768610314`
+  - best epoch：`73`
+  - best loss：`0.0466274992`
+  - final epoch 100 loss：`0.0490118563`
+  - 结论：
+    - `lr2e-6` 低于 `lr1e-6` 的 final/best loss `0.0518485345`。
+    - 与 `lr3e-6` best loss `0.0483082198` 相比，`lr2e-6` best loss 也略优。
+    - epoch 80 后有轻微回升，但不像 `lr3e-6` 那样严重过冲。
+
+- ROI 均值趋势：
+  - `left_cross epsilon`：
+    - epoch 1：`3.999256`
+    - epoch 20：`3.911842`
+    - epoch 40：`3.774323`
+    - epoch 60：`3.614754`
+    - epoch 80：`3.465293`
+    - epoch 100：`3.428636`
+  - `right_cross epsilon`：
+    - epoch 1：`4.000874`
+    - epoch 20：`4.028522`
+    - epoch 40：`4.065979`
+    - epoch 60：`4.105895`
+    - epoch 80：`4.142970`
+    - epoch 100：`4.152974`
+  - `right_cross sigma`：
+    - epoch 1：`0.00300664`
+    - epoch 100：`0.00306038`
+
+- LR sweep diagnostic：
+  - Figure:
+    - `runs/diagnostics/discrete_epsilon_lr_sweep_loss_roi.png`
+  - 结论：
+    - `lr1e-6`：loss 单调、但 ROI 更新太慢。
+    - `lr2e-6`：当前 best loss 最好，ROI 更新中等，过冲较轻。
+    - `lr3e-6`：ROI 更新最快，但 loss 后期严重反弹。
+
+- Visual verdict：
+  - `lr2e-6` final 图和 `lr3e-6` 类似但更温和：
+    - 左上低 epsilon cross 较清楚。
+    - 右下 high epsilon 区域有抬升，但仍弥散、还没有干净十字。
+    - sigma 仍偏弱。
+
+- 当前推荐：
+  - 以 `lr2e-6` best checkpoint / best epoch 73 作为下一阶段主线。
+  - 下一步不要直接 dropout；更建议：
+    - 从 `lr2e-6` best 模型继续降低 LR 微调，或
+    - 做 epsilon-first / sigma-staged 训练，让右下 epsilon 先成形，再放开 sigma。
+
+## 2026-06-08 heartbeat 16:15 freeze-sigma staged probe
+
+- 新增配置：
+  - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma_train80.json`
+  - 相对 `lr2e-6` full two-parameter probe，只改：
+    - `training.epochs = 80`
+    - `training.learning_rate_milestones = [60, 75]`
+    - `training.freeze_sigma = true`
+  - 含义：
+    - sigma 固定为均匀初始背景 `0.003 S/m`。
+    - 网络只通过 epsilon 通道解释观测数据。
+    - 这是 epsilon-first 的最小验证，不修改观测系统。
+
+- 验证：
+  - 命令：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：
+    - `Ran 16 tests`
+    - `OK`
+  - dry-run：
+    - `lr=2e-6`
+    - `freeze_sigma=True`
+    - `epsilon_gradient_mode= negative_discrete_ca_cb_adj_plus1`
+
+- 训练：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma_train80.json"`
+  - Run：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma_train80`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma_train80/figures/parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma_train80/figures/loss_curve.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma_train80/metrics.json`
+    - `runs/diagnostics/discrete_epsilon_freeze_sigma_compare.png`
+
+- Loss：
+  - epoch 1 loss：`0.0766075328`
+  - best/final epoch：`80`
+  - best/final loss：`0.0455817617`
+  - 对比：
+    - `lr2e-6` full two-parameter best：`0.0466274992` at epoch 73。
+    - freeze-sigma loss 更低，且 80 epoch 内单调下降。
+
+- ROI 均值趋势：
+  - `left_cross epsilon`：
+    - epoch 1：`3.999256`
+    - epoch 20：`3.910748`
+    - epoch 40：`3.772341`
+    - epoch 60：`3.610985`
+    - epoch 80：`3.557844`
+  - `right_cross epsilon`：
+    - epoch 1：`4.000874`
+    - epoch 20：`4.028791`
+    - epoch 40：`4.067552`
+    - epoch 60：`4.109979`
+    - epoch 80：`4.123716`
+  - sigma：
+    - 始终固定在 `0.003 S/m`，`sigma_std ~= 4.66e-10`。
+
+- Visual verdict：
+  - epsilon-only/freeze-sigma 能稳定降低数据 loss。
+  - 左上低 epsilon cross 明显。
+  - 右下 high epsilon 继续上升，但没有比 full two-parameter `lr2e-6` 更快成形；仍然弥散。
+  - 全程冻结 sigma 不是最终复现方案，因为论文目标是 epsilon/sigma 双参数。
+
+- 当前判断：
+  - sigma trade-off 不是当前右下 epsilon 弥散的唯一原因。
+  - freeze-sigma 的主要价值是稳定训练和降低 loss。
+  - 下一步推荐：
+    - 跑 `freeze_sigma_epochs=60` 后放开 sigma 的 staged run。
+    - 或基于 `freeze_sigma` best/epoch80 初始化后做 sigma release refinement。
+
+## 2026-06-08 heartbeat 17:06 freeze-sigma-60 release staged run
+
+- 新增配置：
+  - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120.json`
+  - 设计：
+    - `freeze_sigma_epochs = 60`
+    - epoch 1-60 固定 sigma 为均匀背景 `0.003 S/m`。
+    - epoch 61-120 放开 sigma，回到双参数反演。
+    - 其他设置沿用当前主线：
+      - `lr = 2e-6`
+      - `epsilon_gradient_mode = negative_discrete_ca_cb_adj_plus1`
+      - `gradient_normalization = match_rms`
+      - paper-aligned perimeter acquisition。
+
+- 验证：
+  - 命令：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+  - 结果：
+    - `Ran 16 tests`
+    - `OK`
+  - dry-run：
+    - `lr=2e-6`
+    - `freeze_sigma_epochs=60`
+    - `epsilon_gradient_mode= negative_discrete_ca_cb_adj_plus1`
+
+- 训练：
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120.json"`
+  - Run：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120/figures/parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120/figures/loss_curve.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120/metrics.json`
+    - `runs/diagnostics/discrete_epsilon_staged_compare.png`
+
+- Loss：
+  - epoch 1 loss：`0.0766075328`
+  - best epoch：`85`
+  - best loss：`0.0439301170`
+  - final epoch 120 loss：`0.0450320728`
+  - 对比：
+    - `lr2e-6` full two-parameter best：`0.0466274992`。
+    - full freeze-sigma best/final：`0.0455817617`。
+    - staged release 是当前最低 data-loss 结果。
+
+- ROI 均值趋势：
+  - `left_cross epsilon`：
+    - epoch 1：`3.999256`
+    - epoch 20：`3.910748`
+    - epoch 40：`3.772341`
+    - epoch 60：`3.610985`
+    - epoch 80：`3.437975`
+    - epoch 100：`3.383447`
+    - epoch 120：`3.357989`
+  - `right_cross epsilon`：
+    - epoch 1：`4.000874`
+    - epoch 20：`4.028791`
+    - epoch 40：`4.067552`
+    - epoch 60：`4.109979`
+    - epoch 80：`4.154452`
+    - epoch 100：`4.171391`
+    - epoch 120：`4.179674`
+  - `right_cross sigma`：
+    - epoch 1-60：固定 `0.003000`
+    - epoch 80：`0.003053`
+    - epoch 120：`0.003062`
+  - sigma standard deviation：
+    - epoch 1-60：约 `4.66e-10`
+    - epoch 80：`0.0002337`
+    - epoch 120：`0.0002433`
+
+- Visual verdict：
+  - staged release 保留了 epsilon-only 阶段的稳定性，并在释放 sigma 后得到当前最低 loss。
+  - 右下 epsilon ROI mean 提升到 `4.18`，略高于 full two-parameter `lr2e-6` 的 `4.15`。
+  - 但右下 high-epsilon 视觉上仍是弥散亮区，没有形成论文 Cross-shape 中干净的十字。
+  - 左上低 epsilon cross 仍然是最清楚的结构。
+
+- 当前判断：
+  - `freeze_sigma_epochs=60` staged release 是当前最优训练策略。
+  - 右下结构弥散已经不太像单纯 sigma trade-off 问题，更可能需要：
+    - 更长 staged run，但用更低 LR 防止后期回升；
+    - 更强的 INR 表达/FR-INR 架构；
+    - 显式空间正则/TV 或 ROI/shape-aware regularization；
+    - 进一步检查 source/receiver 边界附近的离散梯度和 CPML 项。
+
+- 下一步推荐：
+  - 用 `fr_inr` 架构替换 SIREN，在同一 staged strategy 下跑短 probe。
+  - 或以 staged best epoch 85 为主线，降低 LR 做 80-120 epoch refinement。
+
+## 2026-06-08 interrupted heartbeat / FR-INR staged probe
+
+- 新增配置 1：
+  - `configs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train80.json`
+  - 设计：
+    - architecture: `fr_inr`
+    - mode: `sin+fr`
+    - `high_freq_num=8`
+    - `low_freq_num=8`
+    - `phi_num=8`
+    - `alpha=0.01`
+    - `lr=2e-6`
+    - `freeze_sigma_epochs=60`
+    - discrete epsilon gradient: `negative_discrete_ca_cb_adj_plus1`
+  - 验证：
+    - `python -m unittest discover -s tests -v`
+    - `Ran 16 tests`
+    - `OK`
+    - dry-run 正常，参数量 `50178`。
+  - 训练状态：
+    - 原训练命令异常退出，未写出 `metrics.json` / final figures。
+    - 已写出 snapshots 到 epoch 40。
+    - 该异常退出没有留下训练 Python 进程；当前系统中 `python.exe` 进程是 `quick_inbox.py`，不是本实验训练。
+  - 中间诊断：
+    - 对 epoch 1/20/40 snapshots 重新正演计算 data loss。
+    - 输出：
+      - `runs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train80/partial_epoch40_snapshot_summary.json`
+    - 结果：
+      - epoch 1 loss：`0.0642670350`
+      - epoch 20 loss：`0.0641695469`
+      - epoch 40 loss：`0.0641123772`
+      - left epsilon mean：`4.000422 -> 3.998473`
+      - right epsilon mean：`4.000299 -> 3.999314`
+      - epsilon range at epoch 40：`3.994215` to `4.005273`
+    - 解释：
+      - `alpha=0.01/lr=2e-6` 的 FR-INR 几乎贴在均匀模型附近，更新幅度过小。
+      - 右下 epsilon 没有向高值增长。
+
+- 新增配置 2：
+  - `configs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_alpha01_lr2e5_freezesigma40_train40.json`
+  - 设计：
+    - architecture: `fr_inr`
+    - `alpha=0.1`
+    - `lr=2e-5`
+    - `freeze_sigma_epochs=40`
+    - train 40 epochs
+    - 目的：验证 FR-INR 是否只是尺度太保守。
+  - 验证：
+    - `python -m unittest discover -s tests -v`
+    - `Ran 16 tests`
+    - `OK`
+    - dry-run 正常。
+  - 训练：
+    - 命令：
+      - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_alpha01_lr2e5_freezesigma40_train40.json"`
+    - Run：
+      - `runs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_alpha01_lr2e5_freezesigma40_train40`
+    - 产物：
+      - `runs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_alpha01_lr2e5_freezesigma40_train40/figures/parameter_maps.png`
+      - `runs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_alpha01_lr2e5_freezesigma40_train40/figures/loss_curve.png`
+      - `runs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_alpha01_lr2e5_freezesigma40_train40/metrics.json`
+  - 结果：
+    - first loss：`0.0641778708`
+    - best/final loss：`0.0632465780` at epoch 40
+    - right epsilon mean：
+      - epoch 1：`3.999808`
+      - epoch 10：`4.000118`
+      - epoch 20：`4.000586`
+      - epoch 30：`4.001674`
+      - epoch 40：`4.002174`
+    - left epsilon mean：
+      - epoch 1：`3.999813`
+      - epoch 40：`3.997590`
+    - epsilon range at epoch 40：
+      - `3.960769` to `4.026702`
+    - sigma remains frozen at `0.003 S/m`。
+  - Visual verdict：
+    - final map 在固定 `vmin=1, vmax=8` 色标下几乎仍是均匀背景。
+    - FR-INR 高尺度版本确实比 `alpha=0.01` 动得多一点，但仍远慢于 SIREN staged：
+      - SIREN staged at epoch 40：right epsilon mean `4.067552`
+      - FR-INR alpha=0.1/lr=2e-5 at epoch 40：right epsilon mean `4.002174`
+
+- 当前判断：
+  - 当前 FR-INR 适配不应替代 SIREN 主线。
+  - 它的问题不是观测系统或 discrete epsilon 梯度，而是当前 FR-INR 初始化/预训练/重参数尺度让网络过于贴近均匀模型，反演梯度进入参数后有效更新非常小。
+  - 若继续探索 FR-INR，需要单独做：
+    - 减少/取消均匀模型 pretrain；
+    - 使用更高 `alpha` 或不同 `omega0`；
+    - 按 FR-INR 原仓库检查 Fourier basis 初始化是否完全一致；
+    - 或单独调 network learning rate，而不是沿用 SIREN 的 LR。
+
+- 下一步推荐：
+  - 主线回到 SIREN staged best (`freeze_sigma_epochs=60`, best epoch 85, loss `0.0439301170`)。
+  - 优先做低 LR refinement / regularization，而不是继续投入当前 FR-INR 配置。
+
+## 2026-06-08 19:10-20:35：SIREN staged best 低学习率 refinement
+
+- 代码更新：
+  - `src/ifwi_gpr/train.py`
+    - `build_initial_model` 支持从 `initial.epsilon_path` / `initial.sigma_path` 加载 `.npy` 参数图。
+    - 加入形状检查和 finite 检查，避免错误尺寸的 checkpoint map 被静默用于训练。
+    - `_pretrain_network` 支持 `training.restore_best_pretrain`；默认不改变旧实验行为，配置显式开启时恢复预训练阶段最低 loss 的网络权重。
+  - `tests/test_network_framework.py`
+    - 新增 `.npy` 参数图加载测试。
+    - 新增错误形状参数图拒绝测试。
+  - 验证：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+    - `Ran 18 tests`
+    - `OK`
+
+- 新增/更新配置：
+  - `configs/paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80.json`
+  - 设计：
+    - 从 staged best 参数图初始化：
+      - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120/best_epsilon.npy`
+      - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120/best_sigma.npy`
+    - SIREN，`lr=8e-7`，80 epochs。
+    - 固定 sigma，只继续更新 epsilon。
+    - `restore_best_pretrain=true`，`pretrain_learning_rate=3e-4`。
+  - 解释：
+    - 这不是直接续接网络权重，而是让网络先拟合已有 best parameter map，再继续物理反演。
+    - 好处是不同网络或 dropout 版本后续可以从同一个物理参数图公平起步。
+
+- 第一轮 refinement（未恢复最佳预训练权重，已作为反例保留）：
+  - Run：
+    - `runs/paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80`
+  - 结果：
+    - first loss：`0.0586613342`
+    - best epoch：`38`
+    - best loss：`0.0478123017`
+    - final loss：`0.0494932421`
+    - right epsilon mean：`4.187821` initial fit -> `4.207074` final
+  - 结论：
+    - 由于预训练末期震荡，最终预训练权重比中间 best 差，导致 FWI 初始 data loss 被抬高。
+    - 该结果不作为主线，只用于证明需要 `restore_best_pretrain`。
+
+- 第二轮 refinement（恢复最佳预训练权重，当前有效结果）：
+  - Run：
+    - `runs/paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80_run001`
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80.json"`
+  - 产物：
+    - `runs/paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80_run001/metrics.json`
+    - `runs/paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80_run001/figures/parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80_run001/figures/loss_curve.png`
+    - `runs/diagnostics/staged_vs_refine_best_epsilon.png`
+  - Loss：
+    - first loss：`0.0437644348`
+    - best epoch：`34`
+    - best loss：`0.0413372815`
+    - final epoch：`80`
+    - final loss：`0.0420577340`
+    - 对比：优于 staged best `0.0439301170`。
+  - ROI：
+    - staged best right epsilon mean：`4.159714`
+    - refine initial fit right epsilon mean：`4.129879`
+    - refine best right epsilon mean：`4.170337`
+    - refine final right epsilon mean：`4.206590`
+    - refine best left epsilon mean：`3.319610`
+    - refine final left epsilon mean：`3.229230`
+    - sigma 固定为 staged best map，`right sigma mean = 0.0030549`，`sigma std = 0.0002360`。
+  - Visual verdict：
+    - 左上低 epsilon 十字仍然明显。
+    - 右下高 epsilon 区域比 staged best 更亮一点，但仍是 diffuse blob / local streaks，不是清晰十字。
+    - final epoch 的右侧均值更高，但 data loss 比 best epoch 略差，说明继续推高 epsilon 并不等于更可信的几何恢复。
+  - 结论：
+    - discrete epsilon 梯度和 staged strategy 已经能稳定降低 loss，并能把右侧 epsilon 往上推。
+    - 当前主要瓶颈不再是单纯 epoch 太少，而是右下高 epsilon 的几何约束不足或被多参数 trade-off/illumination 限制。
+    - 下一步不宜盲目加长同一配置；优先做 dropout-IFWI、平滑/TV 正则、或观测系统照明/shot contribution 诊断。
+
+## 2026-06-08 20:35-21:05：dropout-IFWI refinement from staged best
+
+- 论文依据：
+  - 原文默认 dropout probability `p=0.2`。
+  - 论文 discussion 中指出 dropout 可缓解高频噪声；但在 `omega0=30` 时增加 dropout 往往会提高 data misfit，而在 `omega0=20` 时更有利于平衡噪声与结构。
+  - 本轮先保留 Cross-shape 主设置 `omega0=30`，只验证 dropout 是否改善当前 right-cross streak/noise。
+
+- 代码更新：
+  - `src/ifwi_gpr/train.py`
+    - `_pretrain_network` 支持 `training.pretrain_dropout=false`。
+    - 默认保持旧行为；新 dropout 配置关闭预训练 dropout，使网络先稳定拟合 staged best 参数图，再在 inversion 阶段打开 dropout。
+  - 验证：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+    - `Ran 18 tests`
+    - `OK`
+
+- 新增配置：
+  - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60.json`
+  - 设计：
+    - 从 staged best 参数图初始化。
+    - `dropout = 0.2`。
+    - `omega0 = 30`。
+    - `lr = 8e-7`。
+    - train 60 epochs。
+    - 固定 sigma，只反演 epsilon。
+    - `pretrain_dropout=false`。
+    - `restore_best_pretrain=true`。
+  - dry-run 正常，参数量 `50178`。
+
+- Run：
+  - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60`
+  - 命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.run --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60.json"`
+  - 产物：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60/metrics.json`
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60/figures/parameter_maps.png`
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60/figures/loss_curve.png`
+    - `runs/diagnostics/refine_dropout_p02_vs_nodrop_epsilon.png`
+
+- 结果：
+  - dropout p=0.2：
+    - best/final epoch：`60`
+    - best/final loss：`0.0383246876`
+    - initial data-misfit mse：`0.0400101243`
+    - right epsilon mean：`4.205944`
+    - left epsilon mean：`3.248347`
+    - epsilon range：`1.0` to `4.965847`
+    - sigma 固定为 staged best，`right sigma mean=0.0030549`。
+  - 对比：
+    - staged best loss：`0.0439301170`
+    - no-dropout refinement best loss：`0.0413372815`
+    - dropout refinement best loss：`0.0383246876`
+  - Visual verdict：
+    - dropout 明显降低背景纹理和局部 streak，图像更平滑。
+    - 左上低 epsilon cross 保持清晰。
+    - 右下高 epsilon 仍未形成论文级清晰十字，但相比 no-dropout 更像连续异常体，且数据 misfit 明显更好。
+
+- 当前判断：
+  - dropout-IFWI 从 staged best refinement 是目前数据拟合最好的路径。
+  - 当前 best reproduction candidate：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60`
+  - 下一步：
+    - 跑 `p=0.1` 对比，检查是否在保留平滑收益的同时增强右下几何。
+    - 跑 `omega0=20, p=0.2`，更贴近论文 discussion 中对 dropout 的推荐组合。
+    - 之后再决定是否加入 TV/smoothness regularization 或 shot illumination analysis。
+
+## 2026-06-08 21:05-22:10：dropout rate 与 omega0 小 sweep
+
+- 目的：
+  - 围绕论文默认 `dropout p=0.2` 做最小 sweep。
+  - 检查 `p=0.1` 是否比 `p=0.2` 更能保留右下 high-epsilon 几何。
+  - 检查论文 discussion 推荐方向 `omega0=20` + dropout 是否比 Cross-shape 主设置 `omega0=30` 更稳定。
+
+- 新增配置 1：
+  - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60.json`
+  - 变化：
+    - `dropout=0.1`
+    - 其余保持 staged-best refinement 设置一致。
+  - 验证：
+    - `python -m unittest discover -s tests -v`
+    - `Ran 18 tests`
+    - `OK`
+    - dry-run 正常，参数量 `50178`。
+  - Run：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60`
+  - 结果：
+    - best epoch：`31`
+    - best loss：`0.0373394936`
+    - final loss：`0.0375528522`
+    - best right epsilon mean：`4.165928`
+    - final right epsilon mean：`4.178936`
+    - best left epsilon mean：`3.291545`
+    - epsilon best range：`1.0` to `4.964841`
+
+- 新增配置 2：
+  - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_omega20_p02_lr8e7_freezesigma_train60.json`
+  - 变化：
+    - `omega0=20`
+    - `dropout=0.2`
+    - 其余保持 staged-best refinement 设置一致。
+  - 验证：
+    - `python -m unittest discover -s tests -v`
+    - `Ran 18 tests`
+    - `OK`
+    - dry-run 正常，参数量 `50178`。
+  - Run：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_omega20_p02_lr8e7_freezesigma_train60`
+  - 结果：
+    - best epoch：`43`
+    - best loss：`0.0374129526`
+    - final loss：`0.0374327600`
+    - best right epsilon mean：`4.136655`
+    - final right epsilon mean：`4.142508`
+    - best left epsilon mean：`3.272869`
+    - epsilon best range：`1.0` to `4.797855`
+
+- 对比产物：
+  - `runs/diagnostics/dropout_sweep_p0_p01_p02_epsilon.png`
+  - `runs/diagnostics/dropout_omega_sweep_best_epsilon.png`
+  - `runs/diagnostics/dropout_omega_sweep_metrics.json`
+
+- 汇总指标（epsilon best maps）：
+  - staged best：
+    - data loss `0.0439301170`
+    - R2 `0.082162`
+    - SSIM `0.202898`
+    - SNR `13.9966 dB`
+    - MAPE `11.6703%`
+  - `omega30,p=0` refinement：
+    - data loss `0.0413372815`
+    - R2 `0.103209`
+    - SSIM `0.225768`
+    - SNR `14.0974 dB`
+    - MAPE `10.9435%`
+  - `omega30,p=0.1`：
+    - data loss `0.0373394936`
+    - R2 `0.113914`
+    - SSIM `0.231592`
+    - SNR `14.1495 dB`
+    - MAPE `10.2447%`
+  - `omega30,p=0.2`：
+    - data loss `0.0383246876`
+    - R2 `0.120549`
+    - SSIM `0.248233`
+    - SNR `14.1821 dB`
+    - MAPE `10.4122%`
+  - `omega20,p=0.2`：
+    - data loss `0.0374129526`
+    - R2 `0.111918`
+    - SSIM `0.227874`
+    - SNR `14.1397 dB`
+    - MAPE `9.8315%`
+
+- Visual verdict：
+  - dropout 组整体明显比 no-dropout 更干净，背景纹理和局部 streak 被压制。
+  - `omega30,p=0.1` 的 data loss 最低，视觉上平滑且保持一定右下异常响应。
+  - `omega30,p=0.2` 的 epsilon R2/SSIM 最高，右下 epsilon 均值最高，但 data loss 略高于 `p=0.1`。
+  - `omega20,p=0.2` 最平滑、MAPE 最低，但右下 high-epsilon 幅值偏弱，可能过度平滑。
+
+- 当前判断：
+  - 若以 data-fit 为主，当前 best reproduction candidate 是：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60`
+  - 若以结构指标/右下 epsilon 提升为主，当前 best candidate 是：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60`
+  - 无论哪一个，右下 high-epsilon 仍没有恢复成论文级清晰十字；现在更像受照明/参数 trade-off 限制的平滑异常体。
+  - 下一步应做：
+    - `omega30,p=0.15` 作为折中；
+    - 或在 `p=0.1` best map 后短程 release sigma，检查 sigma 固定是否限制右下形状；
+    - 同时做 shot/receiver illumination heatmap，判断右下 cross 的几何信息是否本来就弱。
+
+## 2026-06-08 22:10-23:05：p=0.15 折中实验与 p=0.1 sigma-release probe
+
+- 新增配置 1：
+  - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p015_lr8e7_freezesigma_train60.json`
+  - 目的：
+    - 在 `p=0.1` data loss 最优和 `p=0.2` epsilon R2/SSIM 最优之间测试 `p=0.15`。
+  - 验证：
+    - `python -m unittest discover -s tests -v`
+    - `Ran 18 tests`
+    - `OK`
+    - dry-run 正常，参数量 `50178`。
+  - Run：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p015_lr8e7_freezesigma_train60`
+  - 结果：
+    - best epoch：`14`
+    - best loss：`0.0371642634`
+    - final loss：待以后若需要再比较；当前以 best 为主。
+    - best right epsilon mean：`4.122390`
+    - best left epsilon mean：`3.252051` 附近的视觉趋势不如 `p=0.1/p=0.2` 稳。
+    - epsilon R2：`0.096037`
+    - epsilon SSIM：`0.207616`
+    - epsilon MAPE：`10.204902%`
+  - Visual：
+    - `runs/diagnostics/dropout_p015_sweep_best_epsilon.png`
+  - 结论：
+    - `p=0.15` 虽然给出最低 data loss 数字，但 best epoch 很早，右下 epsilon 和 R2/SSIM 都弱。
+    - 它更像是 data-fit 早停点，不是更好的结构复现。
+    - 不建议作为主线。
+
+- 新增配置 2：
+  - `configs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50.json`
+  - 目的：
+    - 从 `omega30,p=0.1` best map 出发，短程放开 sigma。
+    - 检查固定 sigma 是否限制右下 high-epsilon cross 成形。
+  - 设计：
+    - initial epsilon/sigma 来自：
+      - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60/best_epsilon.npy`
+      - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60/best_sigma.npy`
+    - `dropout=0.1`
+    - `omega0=30`
+    - `lr=5e-7`
+    - train 50 epochs
+    - 不设置 `freeze_sigma`，epsilon/sigma 同时更新。
+  - dry-run 正常。
+  - Run：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50`
+  - 产物：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50/metrics.json`
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50/figures/parameter_maps.png`
+    - `runs/diagnostics/p01_freeze_vs_release_sigma_best_maps.png`
+  - 结果：
+    - best/final epoch：`50`
+    - best/final loss：`0.0357894711`
+    - initial data-misfit mse：`0.0384301828`
+    - best right epsilon mean：`4.199549`
+    - final right epsilon mean：`4.199635`
+    - best left epsilon mean：`3.230306`
+    - epsilon R2：`0.123990`
+    - epsilon SSIM：`0.250421`
+    - best right sigma mean：`0.0030521`
+    - sigma std：`0.0001059`
+    - sigma R2：`0.000779`
+  - Visual verdict：
+    - release sigma 后，sigma 图显著平滑，噪声少于 freeze-sigma 版本。
+    - epsilon 图整体更干净，data loss 和 epsilon R2/SSIM 均超过之前的 dropout sweep。
+    - 右下 high-epsilon 仍是连续弥散异常体，未形成论文级清晰十字。
+  - 结论：
+    - 短程 release sigma 是当前最好的 data-fit 和整体 epsilon metric 路径。
+    - 固定 sigma 不是右下十字缺失的唯一原因；放开 sigma 能改善拟合，但几何仍不充分。
+    - 当前 best reproduction candidate 更新为：
+      - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50`
+    - 下一步优先级：
+    - 做 right-cross illumination / shot contribution heatmap。
+    - 或从 release-sigma best 继续更低 LR 训练，观察是否继续改善而不产生 crosstalk。
+
+## 2026-06-08 23:05-23:40：right-cross illumination 诊断与低 LR continuation
+
+- 文献核对：
+  - 已重新核对 Oxford/GJI 原文网页。
+  - 原文 discussion 支持当前 sweep 方向：
+    - `omega0=20/30` 都是 IFWI 初始可选的大尺度频率因子。
+    - dropout 能缓解高频噪声，但与目标深度、网络宽度、`omega0` 有 trade-off。
+    - 原文也明确指出 GPR FWI 受有限带宽和局部观测照明限制。
+  - 这与当前复现中“dropout 明显降噪，但右下 cross 仍弥散”的现象一致。
+
+- 新增诊断脚本：
+  - `src/ifwi_gpr/diagnose_anomaly_illumination.py`
+  - 方法：
+    - 以 Cross-shape 真值为 `data_true`。
+    - 构造 `data_no_left`：把左上 anomaly 恢复为背景后正演。
+    - 构造 `data_no_right`：把右下 anomaly 恢复为背景后正演。
+    - 使用 `data_true - data_no_left` 与 `data_true - data_no_right` 的均方能量估计两个 anomaly 对观测数据的可见度。
+    - 输出 per-shot、per-receiver 和 shot-receiver heatmap。
+  - 验证：
+    - `python -m unittest discover -s tests -v`
+    - `Ran 18 tests`
+    - `OK`
+  - 运行命令：
+    - `$env:PYTHONPATH='E:\sci_research\GPR\隐式FWI\src'; $env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; $env:NUMBA_CACHE_DIR='C:\tmp\numba-cache'; .\.venv312\Scripts\python.exe -m ifwi_gpr.diagnose_anomaly_illumination --config "E:\sci_research\GPR\隐式FWI\configs\paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50.json" --output-dir "E:\sci_research\GPR\隐式FWI\runs\diagnostics"`
+  - 产物：
+    - `runs/diagnostics/cross_shape_anomaly_illumination.json`
+    - `runs/diagnostics/cross_shape_anomaly_illumination.png`
+  - 结果：
+    - left total contribution energy：`0.0437383725`
+    - right total contribution energy：`0.0207480779`
+    - right/left energy ratio：`0.4743678531`
+    - right strongest sources：
+      - source 20 at `[100, 50]`
+      - source 12 at `[50, 100]`
+      - source 13 at `[62, 100]`
+      - source 19 at `[100, 63]`
+    - right strongest receivers：
+      - receiver 40 at `[100, 50]`
+      - receiver 24 at `[50, 100]`
+      - receiver 25 at `[56, 100]`
+      - receiver 39 at `[100, 57]`
+  - 解释：
+    - 右下 anomaly 不是不可见；最强照明来自底边和右边附近的源/检波器。
+    - 但它的总波形贡献约为左上 anomaly 的 `47.4%`，说明右下结构约束确实弱很多。
+    - 这支持当前判断：右下 high-epsilon cross 难恢复，不只是网络 epoch 不够，也与观测照明/多参数 trade-off 有关。
+
+- 新增配置：
+  - `configs/paper_cross_dropout_ifwi_siren_continue_from_releasesigma_best_p01_lr2e7_train60.json`
+  - 目的：
+    - 从当前 release-sigma best map 继续低 LR 微调。
+    - 检查 `loss=0.035789` 是否还能继续下降，以及右下 epsilon 是否继续增强。
+  - 设计：
+    - initial epsilon/sigma 来自：
+      - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50/best_epsilon.npy`
+      - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50/best_sigma.npy`
+    - `dropout=0.1`
+    - `omega0=30`
+    - `lr=2e-7`
+    - train 60 epochs
+    - epsilon/sigma 联合更新。
+  - dry-run 正常，参数量 `50178`。
+  - Run：
+    - `runs/paper_cross_dropout_ifwi_siren_continue_from_releasesigma_best_p01_lr2e7_train60`
+  - 结果：
+    - best/final epoch：`60`
+    - best/final loss：`0.0364450552`
+    - initial data-misfit mse：`0.0400490977`
+    - best right epsilon mean：`4.209872`
+    - best left epsilon mean：`3.222790`
+    - epsilon R2：`0.123934`
+    - epsilon SSIM：`0.253472`
+    - epsilon MAPE：`10.214073%`
+    - right sigma mean：`0.0030569`
+    - sigma std：`0.0001010`
+  - Visual verdict：
+    - continuation 更进一步提升右下 epsilon 均值和 SSIM。
+    - data loss 没有优于 release-sigma best。
+    - 右下仍是弥散异常体；不建议单纯继续低 LR 长跑作为主线。
+  - 当前选择：
+    - data-fit best 仍是：
+      - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50`
+    - structure/SSIM 若轻微优先，则 continuation 可作为参考：
+      - `runs/paper_cross_dropout_ifwi_siren_continue_from_releasesigma_best_p01_lr2e7_train60`
+  - 下一步：
+    - 基于照明结果，尝试 source/receiver weighting 或 high-illumination shot weighting。
+    - 或对右下区域做 ROI-aware diagnostic，不直接把 ROI loss 加入训练，以免偏离论文复现。
+
+## 2026-06-09 00:00-00:15：dropout mode 审计与修正
+
+- 发现：
+  - 在准备 high-illumination weighting 分支前检查训练循环时，发现 `training.pretrain_dropout=false` 的模式控制被误用于 inversion 主循环。
+  - 结果是：此前 `pretrain_dropout=false` 的 dropout configs 在预训练阶段仍然使用 `network.train()`，但进入 FWI 主循环时使用了 `network.eval()`。
+  - 也就是说：
+    - 旧 dropout sweep 中的 `p=0.1/p=0.2/p=0.15` 主要反映“带 dropout 的预训练正则化初始化 + deterministic inversion”。
+    - 它们不能严格称为论文意义上的 inversion dropout-IFWI。
+  - 这是一个关键复现实验审计点。
+
+- 修正：
+  - `src/ifwi_gpr/train.py`
+    - `_pretrain_network` 中：
+      - `pretrain_dropout=true` 时使用 `network.train()`。
+      - `pretrain_dropout=false` 时使用 `network.eval()`，关闭预训练 dropout。
+    - FWI 主循环前：
+      - 固定调用 `network.train()`，确保 inversion 阶段 dropout 会生效。
+  - 验证：
+    - `$env:TMP='C:\tmp'; $env:TEMP='C:\tmp'; .\.venv312\Scripts\python.exe -m unittest discover -s tests -v`
+    - `Ran 18 tests`
+    - `OK`
+
+- 修正后 true inversion-dropout probe：
+  - Config：
+    - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60.json`
+  - Run：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60_run001`
+  - 解释：
+    - 这是同一配置在修正后重新跑出的结果。
+    - 现在语义是：预训练阶段关闭 dropout，inversion 阶段启用 `p=0.1` dropout。
+  - 结果：
+    - best epoch：`41`
+    - best loss：`0.1688517928`
+    - final loss：`0.2185796946`
+    - best right epsilon mean：`4.102800`
+    - best left epsilon mean：`3.556336`
+    - best epsilon R2：`-0.191151`
+    - best epsilon SSIM：`0.132385`
+    - final epsilon R2：`0.084930`
+    - final epsilon SSIM：`0.205203`
+  - Visual verdict：
+    - 真实 inversion dropout 在当前续跑设置下明显不稳定。
+    - data loss 大幅劣化，结构指标也低于 no-dropout refinement。
+    - 这说明每次 FDTD 反演前随机丢神经元会让物理参数图在 forward/gradient 中剧烈抖动。
+
+- 对旧结果的重新解释：
+  - 旧 `p=0.1/p=0.2/p=0.15` 以及基于旧 `p=0.1` best 的 sigma-release / continuation 结果，仍然是有用的优化诊断，但不应称作严格的论文 dropout-IFWI。
+  - 更准确的名称：
+    - dropout-pretrain regularized deterministic IFWI。
+  - 旧 best：
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50`
+    - 仍是目前 data-fit 最好的“regularized deterministic refinement”候选。
+  - 严格论文式 inversion dropout 目前没有改善结果，需要重新设计：
+    - 更小 dropout，例如 `p=0.02` 或 `p=0.05`；
+    - frozen dropout mask / Monte Carlo averaging；
+    - 或只在若干 epoch 后启用 dropout。
+
+- 当前判断：
+  - 正统 dropout-IFWI 分支需要重启小 dropout rate 探索。
+  - 原先“dropout p=0.1 最优”的结论必须降级为“dropout regularized pretraining/initialization 有帮助”。
+  - 下一步优先：
+    - 跑 `p=0.02` 或 `p=0.05` 的 true inversion-dropout 短 probe。
+    - 或实现固定 dropout mask，以减少逐 epoch 随机物理模型抖动。
+
+- true inversion-dropout 小 rate probe：
+  - Config：
+    - `configs/paper_cross_true_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p002_lr5e7_freezesigma_train40.json`
+  - 设计：
+    - 从 staged best map 初始化。
+    - `dropout=0.02`
+    - `pretrain_dropout=false`
+    - inversion 阶段启用 dropout。
+    - `lr=5e-7`
+    - train 40 epochs
+    - freeze sigma
+  - dry-run 正常，参数量 `50178`。
+  - Run：
+    - `runs/paper_cross_true_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p002_lr5e7_freezesigma_train40`
+  - 结果：
+    - best epoch：`13`
+    - best loss：`0.0698378757`
+    - final loss：`0.0714104027`
+    - best right epsilon mean：`4.120483`
+    - best left epsilon mean：`3.427340`
+    - best epsilon R2：`0.030717`
+    - best epsilon SSIM：`0.184220`
+    - best epsilon MAPE：`13.237480%`
+  - 对比：
+    - no-dropout refinement best loss：`0.0413372815`
+    - true inversion dropout `p=0.1` best loss：`0.1688517928`
+    - true inversion dropout `p=0.02` best loss：`0.0698378757`
+  - 结论：
+    - 降低 dropout 到 `p=0.02` 能缓解 `p=0.1` 的严重不稳定，但仍明显差于 no-dropout。
+    - 在当前 CPU FDTD/autograd bridge 下，普通逐步随机 inversion dropout 会让物理参数图对正演过于随机，暂不适合作为主线。
+    - 下一步若要复现严格 dropout-IFWI，更合理的是：
+      - fixed dropout mask；
+      - Monte Carlo averaging；
+      - 或较长周期才刷新 dropout mask，而不是每个 epoch/forward 都随机。

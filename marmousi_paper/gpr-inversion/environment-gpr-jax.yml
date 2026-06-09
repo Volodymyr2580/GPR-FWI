@@ -1,0 +1,19 @@
+name: gpr-jax
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip>=23
+  - setuptools>=68
+  - wheel
+  - numpy=1.26
+  - scipy
+  - matplotlib
+  - numba
+  - mpi4py
+  - openmpi
+  - tqdm
+  - pyparsing
+  - pip:
+      - -r requirements-gpr-jax-cu121.txt

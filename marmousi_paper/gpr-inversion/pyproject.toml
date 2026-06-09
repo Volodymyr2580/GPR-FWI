@@ -1,0 +1,25 @@
+[project]
+name = "gpr-inversion"
+version = "0.1.0"
+description = "Organized GPR inversion research code."
+requires-python = ">=3.10"
+dependencies = [
+  "einops",
+  "matplotlib",
+  "mpi4py",
+  "numba",
+  "numpy",
+  "optuna",
+  "pyparsing",
+  "scipy",
+  "timm",
+  "torch",
+  "tqdm",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,49 @@
+{
+  "name": "frinr_cross_dropout_smoke",
+  "seed": 2025,
+  "device": "cpu",
+  "output_dir": "runs/frinr_cross_dropout_smoke",
+  "model": {
+    "kind": "cross_shape",
+    "shape": [101, 101],
+    "dx": 0.1,
+    "dz": 0.1,
+    "epsilon_background": 4.0,
+    "sigma_background": 0.003
+  },
+  "network": {
+    "architecture": "fr_inr",
+    "mode": "sin+fr",
+    "hidden_layers": 4,
+    "hidden_features": 128,
+    "high_freq_num": 8,
+    "low_freq_num": 8,
+    "phi_num": 8,
+    "alpha": 0.01,
+    "omega0": 30.0,
+    "dropout": 0.2
+  },
+  "parameters": {
+    "epsilon_min": 1.0,
+    "epsilon_max": 8.0,
+    "sigma_min": 0.0001,
+    "sigma_max": 0.01
+  },
+  "solver": {
+    "backend": "cpu_mpi",
+    "reference_project": "E:/sci_research/GPR/marmousi_paper/gpr-inversion",
+    "dt": 2e-10,
+    "npml": 10,
+    "freq": 100000000.0,
+    "steps": 32
+  },
+  "acquisition": {
+    "sources": [[0, 20], [0, 50], [0, 80]],
+    "receivers": [[0, 20], [0, 40], [0, 60], [0, 80]]
+  },
+  "training": {
+    "epochs": 2,
+    "learning_rate": 0.0001,
+    "snapshot_interval": 1
+  }
+}

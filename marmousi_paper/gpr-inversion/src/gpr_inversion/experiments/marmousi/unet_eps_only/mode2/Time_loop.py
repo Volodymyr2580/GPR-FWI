@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Jun 14 17:54:29 2018
+
+@author: nephilim
+"""
+from numba import jit
+import numpy as np
+
+@jit(nopython=True, fastmath=True, cache=True)           
+def update_H(xl,zl,dx,dz,dt,sigma,epsilon,mu,npml,a_x,a_z,b_x,b_z,k_x,k_z,Hz,Hx,Ey,memory_dEy_dx,memory_dEy_dz):
+    x_len=xl+2*npml
+    z_len=zl+2*npml
+
+    for j in range(1,z_len-1):
+        for i in range(1,x_len-1):
+            value_dEy_dx=(Ey[i+1][j]-Ey[i][j])/dx
+                         
+            if (i>=npml) and (i<x_len-npml):
+                Hz[i][j]+=value_dEy_dx*dt/mu[i][j]
+                
+            elif i<npml:
+                memory_dEy_dx[i][j]=b_x[i]*memory_dEy_dx[i][j]+a_x[i]*value_dEy_dx
+                value_dEy_dx=value_dEy_dx/k_x[i]+memory_dEy_dx[i][j]
+                Hz[i][j]+=value_dEy_dx*dt/mu[i][j]
+                
+            elif i>=x_len-npml:
+                memory_dEy_dx[i-xl][j]=b_x[i]*memory_dEy_dx[i-xl][j]+a_x[i]*value_dEy_dx
+                value_dEy_dx=value_dEy_dx/k_x[i]+memory_dEy_dx[i-xl][j]
+                Hz[i][j]+=value_dEy_dx*dt/mu[i][j]
+                      
+    for j in range(1,z_len-1):
+        for i in range(1,x_len-1):
+            value_dEy_dz=(Ey[i][j+1]-Ey[i][j])/dz
+                         
+            if (j>=npml) and (j<z_len-npml):
+                Hx[i][j]-=value_dEy_dz*dt/mu[i][j]
+                
+            elif j<npml:
+                memory_dEy_dz[i][j]=b_z[j]*memory_dEy_dz[i][j]+a_z[j]*value_dEy_dz
+                value_dEy_dz=value_dEy_dz/k_z[j]+memory_dEy_dz[i][j]
+                Hx[i][j]-=value_dEy_dz*dt/mu[i][j]
+                
+            elif j>=z_len-npml:
+                memory_dEy_dz[i][j-zl]=b_z[j]*memory_dEy_dz[i][j-zl]+a_z[j]*value_dEy_dz
+                value_dEy_dz=value_dEy_dz/k_z[j]+memory_dEy_dz[i][j-zl]
+                Hx[i][j]-=value_dEy_dz*dt/mu[i][j]
+
+    return Hz,Hx
+
+@jit(nopython=True, fastmath=True, cache=True)            
+def update_E(xl,zl,dx,dz,dt,ca,cb,npml,a_x,a_z,b_x,b_z,k_x,k_z,Hz,Hx,Ey,memory_dHz_dx,memory_dHx_dz):
+    x_len=xl+2*npml
+    z_len=zl+2*npml
+    for j in range(1,z_len-1):
+        for i in range(1,x_len-1):
+            value_dv_dx=(Hz[i][j]-Hz[i-1][j])/dx
+         
+            value_dw_dz=(Hx[i][j]-Hx[i][j-1])/dz                        
+
+            if (i>=npml) and (i<x_len-npml) and (j>=npml) and (j<z_len-npml):
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+                
+            elif (i<npml) and (j>=npml) and (j<z_len-npml):
+                memory_dHz_dx[i][j]=b_x[i]*memory_dHz_dx[i][j]+a_x[i]*value_dv_dx
+                value_dv_dx=value_dv_dx/k_x[i]+memory_dHz_dx[i][j]
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+                
+            elif (i>=x_len-npml) and (j>=npml) and (j<z_len-npml):
+                memory_dHz_dx[i-xl][j]=b_x[i]*memory_dHz_dx[i-xl][j]+a_x[i]*value_dv_dx
+                value_dv_dx=value_dv_dx/k_x[i]+memory_dHz_dx[i-xl][j]
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+                
+            elif (j<npml) and (i>=npml) and (i<x_len-npml):
+                memory_dHx_dz[i][j]=b_z[j]*memory_dHx_dz[i][j]+a_z[j]*value_dw_dz
+                value_dw_dz=value_dw_dz/k_z[j]+memory_dHx_dz[i][j]
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+                
+            elif (j>=z_len-npml) and (i>=npml) and (i<x_len-npml):
+                memory_dHx_dz[i][j-zl]=b_z[j]*memory_dHx_dz[i][j-zl]+a_z[j]*value_dw_dz
+                value_dw_dz=value_dw_dz/k_z[j]+memory_dHx_dz[i][j-zl]
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+                
+            elif (i<npml) and (j<npml):
+                memory_dHz_dx[i][j]=b_x[i]*memory_dHz_dx[i][j]+a_x[i]*value_dv_dx
+                value_dv_dx=value_dv_dx/k_x[i]+memory_dHz_dx[i][j]
+                
+                memory_dHx_dz[i][j]=b_z[j]*memory_dHx_dz[i][j]+a_z[j]*value_dw_dz
+                value_dw_dz=value_dw_dz/k_z[j]+memory_dHx_dz[i][j]
+                
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+                
+            elif (i<npml) and (j>=z_len-npml):
+                memory_dHz_dx[i][j]=b_x[i]*memory_dHz_dx[i][j]+a_x[i]*value_dv_dx
+                value_dv_dx=value_dv_dx/k_x[i]+memory_dHz_dx[i][j]
+                
+                memory_dHx_dz[i][j-zl]=b_z[j]*memory_dHx_dz[i][j-zl]+a_z[j]*value_dw_dz
+                value_dw_dz=value_dw_dz/k_z[j]+memory_dHx_dz[i][j-zl]
+                
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+                
+            elif (i>=x_len-npml) and (j<npml):
+                memory_dHz_dx[i-xl][j]=b_x[i]*memory_dHz_dx[i-xl][j]+a_x[i]*value_dv_dx
+                value_dv_dx=value_dv_dx/k_x[i]+memory_dHz_dx[i-xl][j]
+                
+                memory_dHx_dz[i][j]=b_z[j]*memory_dHx_dz[i][j]+a_z[j]*value_dw_dz
+                value_dw_dz=value_dw_dz/k_z[j]+memory_dHx_dz[i][j]
+               
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+                
+            elif (i>=x_len-npml) and (j>=z_len-npml):
+                memory_dHz_dx[i-xl][j]=b_x[i]*memory_dHz_dx[i-xl][j]+a_x[i]*value_dv_dx
+                value_dv_dx=value_dv_dx/k_x[i]+memory_dHz_dx[i-xl][j]
+                
+                memory_dHx_dz[i][j-zl]=b_z[j]*memory_dHx_dz[i][j-zl]+a_z[j]*value_dw_dz
+                value_dw_dz=value_dw_dz/k_z[j]+memory_dHx_dz[i][j-zl]
+                
+                Ey[i][j]=ca[i][j]*Ey[i][j]+cb[i][j]*(value_dv_dx-value_dw_dz)*dt
+    return Ey
+
+#Forward modelling ------ timeloop for mode2 (多接收器)
+def time_loop(xl,zl,dx,dz,dt,sigma,epsilon,mu,CPML_Params,f,k_max,source_site,receiver_list):
+    # xl, zl: x和z方向的网格数
+    # dx, dz: x和z方向的网格间距
+    # dt: 时间步长
+    # sigma: 电导率
+    # epsilon: 相对介电常数
+    # mu: 磁导率
+    # CPML_Params: CPML边界条件参数
+    # f: 震源函数(Ricker子波)
+    # k_max: 最大时间步数
+    # source_site: 震源位置
+    # receiver_list: 接收点位置列表 [(x1,z1), (x2,z2), ...]
+    ep0 = 8.841941282883074e-12
+    mu0 = 1.2566370614359173e-06
+    
+    epsilon = epsilon.copy()*ep0
+    mu = mu.copy()*mu0
+    npml=CPML_Params.npml        
+    Ey = np.zeros((xl+2*npml, zl+2*npml))  # 电场y分量
+    Hz = np.zeros((xl+2*npml, zl+2*npml))  # 磁场z分量
+    Hx = np.zeros((xl+2*npml, zl+2*npml))  # 磁场x分量
+        
+    memory_dEy_dx = np.zeros((2*npml, zl+2*npml))  # x方向电场导数记忆项
+    memory_dEy_dz = np.zeros((xl+2*npml, 2*npml))  # z方向电场导数记忆项
+    memory_dHz_dx = np.zeros((2*npml, zl+2*npml))  # x方向磁场导数记忆项
+    memory_dHx_dz = np.zeros((xl+2*npml, 2*npml))  # z方向磁场导数记忆项
+    
+    # 获取CPML区域的参数
+    a_x=CPML_Params.a_x # x方向衰减系数
+    b_x=CPML_Params.b_x # x方向拉伸系数
+    k_x=CPML_Params.k_x # x方向缩放系数
+    a_z=CPML_Params.a_z # z方向衰减系数
+    b_z=CPML_Params.b_z # z方向拉伸系数
+    k_z=CPML_Params.k_z # z方向缩放系数
+    a_x_half=CPML_Params.a_x_half # x方向半衰减系数
+    b_x_half=CPML_Params.b_x_half # x方向半拉伸系数
+    k_x_half=CPML_Params.k_x_half # x方向半缩放系数
+    a_z_half=CPML_Params.a_z_half # z方向半衰减系数
+    b_z_half=CPML_Params.b_z_half # z方向半拉伸系数
+    k_z_half=CPML_Params.k_z_half # z方向半缩放系数
+    ca = CPML_Params.ca # 电场y分量更新系数
+    cb = CPML_Params.cb # 电场y分量更新系数
+    
+    # 调整接收点位置到扩展网格
+    receiver_list_extended = [(rec[0] + npml, rec[1] + npml) for rec in receiver_list]
+            
+    for tt in range(k_max):
+        # 1. 更新磁场分量
+        Hz,Hx=update_H(xl,zl,dx,dz,dt,sigma,epsilon,mu,npml,a_x_half,a_z_half,b_x_half,b_z_half,k_x_half,k_z_half,Hz,Hx,Ey,memory_dEy_dx,memory_dEy_dz)
+        # 2. 更新电场分量
+        Ey=update_E(xl,zl,dx,dz,dt,ca,cb,npml,a_x,a_z,b_x,b_z,k_x,k_z,Hz,Hx,Ey,memory_dHz_dx,memory_dHx_dz)
+        
+        # 3. 添加震源项， f是ricker子波
+        Ey[source_site[0]][source_site[1]]+=-cb[source_site[0]][source_site[1]]*f[tt]*dt/dx/dz
+        
+        # 4. 返回当前时间步的结果，并且是yield形式，返回Ey和所有接收器位置的电场值
+        receiver_data = [Ey[rec_pos[0], rec_pos[1]] for rec_pos in receiver_list_extended]
+        yield Ey, receiver_data
+
+def reverse_time_loop(xl,zl,dx,dz,dt,sigma,epsilon,mu,CPML_Params,k_max,receiver_list,residual_data):
+    # 参数说明：
+    # xl, zl: x和z方向的网格数
+    # dx, dz: x和z方向的网格间距
+    # dt: 时间步长
+    # sigma: 电导率
+    # epsilon: 相对介电常数
+    # mu: 磁导率
+    # CPML_Params: CPML边界条件参数
+    # k_max: 最大时间步数
+    # receiver_list: 接收点位置列表 [(x1,z1), (x2,z2), ...]
+    # residual_data: 残差数据 (n_receivers, n_steps)
+    ep0 = 8.841941282883074e-12
+    mu0 = 1.2566370614359173e-06
+    epsilon = epsilon.copy()*ep0
+    mu = mu.copy()*mu0
+    npml=CPML_Params.npml        
+    Ey=np.zeros((xl+2*npml,zl+2*npml))
+    Hz=np.zeros((xl+2*npml,zl+2*npml))
+    Hx=np.zeros((xl+2*npml,zl+2*npml))
+        
+    memory_dEy_dx=np.zeros((2*npml,zl+2*npml))
+    memory_dEy_dz=np.zeros((xl+2*npml,2*npml))
+    memory_dHz_dx=np.zeros((2*npml,zl+2*npml))
+    memory_dHx_dz=np.zeros((xl+2*npml,2*npml))
+    
+    a_x=CPML_Params.a_x
+    b_x=CPML_Params.b_x
+    k_x=CPML_Params.k_x
+    a_z=CPML_Params.a_z
+    b_z=CPML_Params.b_z
+    k_z=CPML_Params.k_z
+    a_x_half=CPML_Params.a_x_half
+    b_x_half=CPML_Params.b_x_half
+    k_x_half=CPML_Params.k_x_half
+    a_z_half=CPML_Params.a_z_half
+    b_z_half=CPML_Params.b_z_half
+    k_z_half=CPML_Params.k_z_half
+    ca = CPML_Params.ca_r
+    cb = CPML_Params.cb
+    
+    # 调整接收点位置到扩展网格
+    receiver_list_extended = [(rec[0] + npml, rec[1] + npml) for rec in receiver_list]
+    n_receivers = len(receiver_list)
+            
+    for tt in range(k_max):
+        # 同时激发所有伴随源
+        for rec_idx in range(n_receivers):
+            rec_pos = receiver_list_extended[rec_idx]
+            #由于一阶差分，反传时source term上会多一个负号
+            Ey[rec_pos[0],rec_pos[1]]-=residual_data[rec_idx, k_max-tt-1]
+        
+        # 更新磁场分量
+        Hz,Hx=update_H(xl,zl,dx,dz,dt,sigma,epsilon,mu,npml,a_x_half,a_z_half,b_x_half,b_z_half,k_x_half,k_z_half,Hz,Hx,Ey,memory_dEy_dx,memory_dEy_dz)
+        # 更新电场分量
+        Ey=update_E(xl,zl,dx,dz,dt,ca,cb,npml,a_x,a_z,b_x,b_z,k_x,k_z,Hz,Hx,Ey,memory_dHz_dx,memory_dHx_dz)
+        # pyplot.imshow(Ey,vmin=-50,vmax=50)
+        # pyplot.pause(0.01)
+        yield Ey.copy()

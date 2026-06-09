@@ -1,0 +1,32 @@
+# MPI并行计算依赖包
+# 核心依赖
+numpy>=1.19.0
+scipy>=1.5.0
+matplotlib>=3.3.0
+
+# MPI支持
+mpi4py>=3.0.0
+
+# 深度学习框架（可选，用于UNet）
+torch>=1.7.0
+torchvision>=0.8.0
+
+# 进度条和工具
+tqdm>=4.50.0
+
+# 图像处理
+Pillow>=8.0.0
+
+# 科学计算
+scikit-image>=0.17.0
+
+# 安装说明:
+# 1. 首先安装OpenMPI或MPICH
+#    Ubuntu/Debian: sudo apt-get install openmpi-bin libopenmpi-dev
+#    CentOS/RHEL: sudo yum install openmpi openmpi-devel
+#
+# 2. 然后安装Python依赖
+#    pip install -r requirements.txt
+#
+# 3. 或者使用conda
+#    conda install mpi4py numpy scipy matplotlib

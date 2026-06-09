@@ -1,0 +1,99 @@
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Local virtual environments
+.venv/
+.venv*/
+venv/
+env/
+node_modules/
+
+# Local environment files
+.env
+.env.*
+
+# Experiment data and generated outputs
+**/data/
+**/outputs/
+**/output/
+**/runs/
+**/logs/
+**/result/
+**/results/
+**/result_*/
+**/results_*/
+**/.pycache_check/
+**/epoch_*/
+**/feature_statistics/
+**/gradient_flow/
+
+# Heavy scientific arrays, radar/model data, and generated media
+*.npy
+*.npz
+*.mat
+*.dat
+*.sav
+*.segy
+*.sgy
+*.bin
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.pkl
+*.ckpt
+*.csv
+*.tar
+*.tar.gz
+*.zip
+*.7z
+*.rar
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.bmp
+*.eps
+*.gif
+*.mp4
+*.avi
+*.mov
+*.wav
+
+# Exploratory notebooks are kept local in the first lightweight sync because
+# they often contain embedded figures or intermediate outputs.
+*.ipynb
+
+# Local reference PDFs and papers
+*.pdf
+隐式FWI/ifwi_gpr_paper_text.txt
+GPR_references/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*Zone.Identifier*
+
+# Local agent/session artifacts and nested third-party checkout
+.omx/
+隐式FWI/FR-INR/
+
+# Large legacy experiment archives kept local for reference
+marmousi_paper/OverThrust_Tests/
+marmousi_paper/traditional/
+marmousi_paper/unet/
+mpi_gprfwi/marmousi_and_overthrust/
+mpi_gprfwi/find_unet_mode2_nofix/lr*/
+mpi_gprfwi/moving_downsample_big - 副本/

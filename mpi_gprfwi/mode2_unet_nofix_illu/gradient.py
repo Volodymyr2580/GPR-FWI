@@ -1,0 +1,299 @@
+import numpy as np
+import sys
+import os
+from Time_loop import reverse_time_loop
+from Add_CPML import Add_CPML
+
+# 添加MPI支持
+try:
+    from mpi4py import MPI
+    MPI_AVAILABLE = True
+except ImportError:
+    MPI_AVAILABLE = False
+    print("Warning: mpi4py not available, running in serial mode")
+
+def compute_laplacian_2d(field, dx, dz):
+    """
+    计算二维拉普拉斯算子 ∇²f = ∂²f/∂x² + ∂²f/∂z²
+    使用中心差分格式
+    """
+    nx, nz = field.shape
+    laplacian = np.zeros_like(field)
+    
+    # 内部点的拉普拉斯算子
+    laplacian[1:-1, 1:-1] = (
+        (field[2:, 1:-1] - 2*field[1:-1, 1:-1] + field[:-2, 1:-1]) / (dx**2) +
+        (field[1:-1, 2:] - 2*field[1:-1, 1:-1] + field[1:-1, :-2]) / (dz**2)
+    )
+    
+    # 边界处理（使用一阶差分）
+    # 左边界
+    laplacian[0, 1:-1] = (
+        (field[1, 1:-1] - field[0, 1:-1]) / (dx**2) +
+        (field[0, 2:] - 2*field[0, 1:-1] + field[0, :-2]) / (dz**2)
+    )
+    # 右边界
+    laplacian[-1, 1:-1] = (
+        (field[-1, 1:-1] - field[-2, 1:-1]) / (dx**2) +
+        (field[-1, 2:] - 2*field[-1, 1:-1] + field[-1, :-2]) / (dz**2)
+    )
+    # 上边界
+    laplacian[1:-1, 0] = (
+        (field[2:, 0] - 2*field[1:-1, 0] + field[:-2, 0]) / (dx**2) +
+        (field[1:-1, 1] - field[1:-1, 0]) / (dz**2)
+    )
+    # 下边界
+    laplacian[1:-1, -1] = (
+        (field[2:, -1] - 2*field[1:-1, -1] + field[:-2, -1]) / (dx**2) +
+        (field[1:-1, -1] - field[1:-1, -2]) / (dz**2)
+    )
+    # 四个角点
+    laplacian[0, 0] = (field[1, 0] - field[0, 0]) / (dx**2) + (field[0, 1] - field[0, 0]) / (dz**2)
+    laplacian[0, -1] = (field[1, -1] - field[0, -1]) / (dx**2) + (field[0, -1] - field[0, -2]) / (dz**2)
+    laplacian[-1, 0] = (field[-1, 0] - field[-2, 0]) / (dx**2) + (field[-1, 1] - field[-1, 0]) / (dz**2)
+    laplacian[-1, -1] = (field[-1, -1] - field[-2, -1]) / (dx**2) + (field[-1, -1] - field[-1, -2]) / (dz**2)
+    
+    return laplacian
+
+def compute_tikhonov_gradient(model, dx, dz, alpha_tikhonov=0.01):
+    """
+    计算二阶Tikhonov正则项的梯度
+    正则项: R(m) = (α/2) * ||∇²m||²
+    梯度: ∇R(m) = α * ∇²(∇²m)
+    """
+    # 计算拉普拉斯算子
+    laplacian = compute_laplacian_2d(model, dx, dz)
+    # 计算拉普拉斯算子的拉普拉斯算子（四阶导数）
+    tikhonov_grad =  compute_laplacian_2d(laplacian, dx, dz)
+    # 对tikhonov_grad进行归一化处理
+    max_abs = np.max(np.abs(tikhonov_grad))
+    if max_abs > 0:
+        tikhonov_grad = tikhonov_grad / max_abs
+    
+    return alpha_tikhonov *tikhonov_grad
+
+def compute_gradient_mpi(epsilon, sigma, residual, source_list, receiver_list, dt, dx, dz, npml, freq, steps, sigma_required_gradient=False, wavefield_data=None, global_start_idx=0):
+    """
+    MPI并行版本的梯度计算
+    使用MPI并行处理多个shot_idx
+    
+    Returns:
+        grad_eps: 介电常数梯度
+        grad_sig: 电导率梯度（如果sigma_required_gradient=True）
+    """
+    if not MPI_AVAILABLE:
+        return compute_gradient(epsilon, sigma, residual, source_list, receiver_list, dt, dx, dz, npml, freq, steps, sigma_required_gradient, wavefield_data)
+    
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    size = comm.Get_size()
+    
+    xl, zl = epsilon.shape
+    n_shots = len(source_list)
+    n_receivers = len(receiver_list)
+    
+    
+    # 计算本进程负责的shot切片，与forward并行策略一致
+    shots_per_proc = n_shots // size
+    remainder = n_shots % size
+    if rank < remainder:
+        start_idx = rank * (shots_per_proc + 1)
+        end_idx = start_idx + shots_per_proc + 1
+    else:
+        start_idx = rank * shots_per_proc + remainder
+        end_idx = start_idx + shots_per_proc
+
+    local_source_list = source_list[start_idx:end_idx]
+    # residual 可能是全局 (n_shots, T) 或本地 (local_n_shots, T)
+    if residual.shape[0] == n_shots:
+        residual_local = residual[start_idx:end_idx, :]
+    else:
+        # 假定 residual 已经是本地切片
+        residual_local = residual
+    local_n_shots = len(local_source_list)
+
+    # 本地梯度计算 - 严格按照原有串行版本的计算方法
+    local_grad_eps = np.zeros_like(epsilon)
+    local_grad_sig = np.zeros_like(sigma) if sigma_required_gradient else None
+   
+    ep0 = 8.841941282883074e-12
+    # 扩展模型 - 严格按照原有方法
+    epsilon_extended = np.ones((xl + 2*npml, zl + 2*npml))
+    sigma_extended = np.ones((xl + 2*npml, zl + 2*npml)) * 1e-4
+    mu_extended = np.ones((xl + 2*npml, zl + 2*npml))
+    epsilon_extended[npml:npml+xl, npml:npml+zl] = epsilon
+    sigma_extended[npml:npml+xl, npml:npml+zl] = sigma
+    epsilon_extended[:npml, :] = epsilon_extended[npml, :]
+    epsilon_extended[-npml:, :] = epsilon_extended[-npml-1, :]
+    epsilon_extended[:, :npml] = epsilon_extended[:, npml].reshape(-1, 1)
+    epsilon_extended[:, -npml:] = epsilon_extended[:, -npml-1].reshape(-1, 1)
+    sigma_extended[:npml, :] = sigma_extended[npml, :]
+    sigma_extended[-npml:, :] = sigma_extended[-npml-1, :]
+    sigma_extended[:, :npml] = sigma_extended[:, npml].reshape(-1, 1)
+    sigma_extended[:, -npml:] = sigma_extended[:, -npml-1].reshape(-1, 1)
+        
+    cpml_params = Add_CPML(xl, zl, sigma_extended.copy(), epsilon_extended.copy(), mu_extended.copy(), dx, dz, dt)
+
+    for local_shot_idx, source_pos in enumerate(local_source_list):
+        
+        # 获取正演波场数据
+        if wavefield_data is not None:
+            forward_wavefield = np.array(wavefield_data[local_shot_idx])
+            # 计算正传波场的中心差分
+            forward_diff = (forward_wavefield[2:] - forward_wavefield[:-2]) / (2 * dt)
+        else:
+            print("Warning: wavefield_data not provided, gradient calculation may be incomplete")
+            continue
+        
+        # 获取当前炮的所有接收器残差
+        shot_residual = residual_local[local_shot_idx, :, :]  # (n_receivers, n_steps)
+        
+        # 伴随反传
+        reverse_loop_gen = reverse_time_loop(
+            xl,
+            zl,
+            dx,
+            dz,
+            dt,
+            sigma_extended.copy(),
+            epsilon_extended.copy(),
+            mu_extended.copy(),
+            cpml_params,
+            steps,
+            receiver_list,
+            shot_residual,
+        )
+        
+        # 收集伴随波场
+        adjoint_list = []
+        for adj in reverse_loop_gen:
+            adjoint_list.append(np.array(adj))
+        adjoint_list = adjoint_list[::-1]  # 反转时间
+        
+        # 计算梯度贡献 - 只用有效的时间步
+        for k in range(1, steps-1):
+            adjoint_field = adjoint_list[k]
+            local_grad_eps += ep0 * adjoint_field[npml:npml+xl, npml:npml+zl] * forward_diff[k-1][npml:npml+xl, npml:npml+zl]
+            if sigma_required_gradient:
+                local_grad_sig += adjoint_field[npml:npml+xl, npml:npml+zl] * forward_wavefield[k][npml:npml+xl, npml:npml+zl]
+        
+        # 照明项已在函数开始时统一计算，这里不再重复计算
+    
+    # 收集所有进程的梯度和照明
+    all_grad_eps = comm.gather(local_grad_eps, root=0)
+    
+    if sigma_required_gradient:
+        all_grad_sig = comm.gather(local_grad_sig, root=0)
+    
+    if rank == 0:
+        # 合并所有进程的梯度
+        grad_eps = np.zeros_like(epsilon)
+        for proc_grad in all_grad_eps:
+            grad_eps += proc_grad
+       
+        if sigma_required_gradient:
+            grad_sig = np.zeros_like(sigma)
+            for proc_grad in all_grad_sig:
+                grad_sig += proc_grad
+        else:
+            grad_sig = None
+        
+        # 应用mask - 严格按照原有方法
+        mask = np.ones_like(grad_eps)
+        #mask[:20,:] = 0
+        grad_eps *= mask
+        if sigma_required_gradient:
+            grad_sig *= mask
+    else:
+        # 非主进程创建空梯度和照明
+        grad_eps = np.zeros_like(epsilon)
+        grad_sig = np.zeros_like(sigma) if sigma_required_gradient else None
+    
+    # 广播结果到所有进程
+    grad_eps = comm.bcast(grad_eps, root=0)
+    if sigma_required_gradient:
+        grad_sig = comm.bcast(grad_sig, root=0)
+        return grad_eps, grad_sig
+    else:
+        return grad_eps, None
+
+def compute_gradient(epsilon, sigma, residual, source_list, receiver_list, dt, dx, dz, npml, freq, steps, sigma_required_gradient=False, wavefield_data=None, global_start_idx=0):
+    """
+    mode1: 只处理单一receiver（与source同位置）
+    如果MPI可用，自动使用并行版本
+    epsilon: 当前介电常数模型
+    sigma: 当前电导率模型
+    residual: [n_shots, n_time]
+    source_list, receiver_list: 炮点、检波点坐标（长度一致，位置相同）
+    
+    Returns:
+        grad_eps: 介电常数梯度
+        grad_sig: 电导率梯度（如果sigma_required_gradient=True）
+    """
+    # 如果MPI可用且进程数大于1，使用并行版本
+    if MPI_AVAILABLE and MPI.COMM_WORLD.Get_size() > 1:
+        return compute_gradient_mpi(epsilon, sigma, residual, source_list, receiver_list, dt, dx, dz, npml, freq, steps, sigma_required_gradient, wavefield_data, global_start_idx)
+    
+    # 串行版本（原有代码）
+    xl, zl = epsilon.shape
+    n_shots = len(source_list)
+    n_receivers = len(receiver_list)
+    grad_eps = np.zeros_like(epsilon)
+    grad_sig = np.zeros_like(sigma) if sigma_required_gradient else None
+    ep0 = 8.841941282883074e-12
+    # 扩展模型
+    epsilon_extended = np.ones((xl + 2*npml, zl + 2*npml))
+    sigma_extended = np.ones((xl + 2*npml, zl + 2*npml)) * 1e-4
+    mu_extended = np.ones((xl + 2*npml, zl + 2*npml))
+    epsilon_extended[npml:npml+xl, npml:npml+zl] = epsilon
+    sigma_extended[npml:npml+xl, npml:npml+zl] = sigma
+    epsilon_extended[:npml, :] = epsilon_extended[npml, :]
+    epsilon_extended[-npml:, :] = epsilon_extended[-npml-1, :]
+    epsilon_extended[:, :npml] = epsilon_extended[:, npml].reshape(-1, 1)
+    epsilon_extended[:, -npml:] = epsilon_extended[:, -npml-1].reshape(-1, 1)
+    sigma_extended[:npml, :] = sigma_extended[npml, :]
+    sigma_extended[-npml:, :] = sigma_extended[-npml-1, :]
+    sigma_extended[:, :npml] = sigma_extended[:, npml].reshape(-1, 1)
+    sigma_extended[:, -npml:] = sigma_extended[:, -npml-1].reshape(-1, 1)
+    cpml_params = Add_CPML(xl, zl, sigma_extended.copy(), epsilon_extended.copy(), mu_extended.copy(), dx, dz, dt)
+    for shot_idx, source_pos in enumerate(source_list):
+        
+        # 获取正演波场数据
+        if wavefield_data is not None:
+            forward_wavefield = np.array(wavefield_data[shot_idx])
+            # 计算正传波场的中心差分
+            forward_diff = (forward_wavefield[2:] - forward_wavefield[:-2]) / (2 * dt)
+        else:
+            print("Warning: wavefield_data not provided, gradient calculation may be incomplete")
+            continue
+        
+        # 获取当前炮的所有接收器残差
+        shot_residual = residual[shot_idx, :, :]  # (n_receivers, n_steps)
+        
+        # 伴随反传
+        reverse_loop_gen = reverse_time_loop(xl, zl, dx, dz, dt, sigma_extended.copy(), epsilon_extended.copy(), mu_extended.copy(), cpml_params, steps, receiver_list, shot_residual)
+        
+        # 收集伴随波场
+        adjoint_list = []
+        for adj in reverse_loop_gen:
+            adjoint_list.append(np.array(adj))
+        adjoint_list = adjoint_list[::-1]  # 反转时间
+        
+        # 计算梯度贡献 - 只用有效的时间步
+        for k in range(1, steps-1):
+            adjoint_field = adjoint_list[k]
+            grad_eps += ep0 * adjoint_field[npml:npml+xl, npml:npml+zl] * forward_diff[k-1][npml:npml+xl, npml:npml+zl]
+            if sigma_required_gradient:
+                grad_sig += adjoint_field[npml:npml+xl, npml:npml+zl] * forward_wavefield[k][npml:npml+xl, npml:npml+zl]
+    
+    # 照明计算已移至forward函数中，这里只返回原始梯度
+    
+    mask = np.ones_like(grad_eps)
+    #mask[:20,:] = 0
+    grad_eps *= mask
+    
+    if sigma_required_gradient:
+        grad_sig *= mask
+        return grad_eps, grad_sig
+    else:
+        return grad_eps, None

@@ -1,0 +1,35 @@
+name: marmousi_mode2_unet_eps_adam_illumination
+migration_status: supported
+source_path: ../unet/mode2_unet_fix_illu/gpr_train_mpi.py
+model: marmousi
+acquisition_mode: mode2
+parameterization: unet
+inversion_strategy: eps_only
+optimizer: adam
+illumination: true
+fixed_top_rows: 20
+snapshot_interval: 1000
+data_path: ../unet/mode2_unet_fix_illu/modelv1.bin
+
+regularization:
+  tv:
+    eps: 0.0
+    sig: 0.0
+  tikhonov:
+    eps: 0.01
+    sig: 0.0
+
+training:
+  learning_rate_eps: 1e-4
+  learning_rate_sig: 0.0
+  lr_eps_stage2: 1e-4
+  num_epochs_stage1: 2001
+  num_epochs_stage2: 0
+  offset: 0.0
+
+runtime:
+  mpi_processes: 20
+  device: cuda:0
+  output_dir: outputs/marmousi/mode2_unet_eps_adam_illumination
+  resume: false
+  stage1_checkpoint_path: ""

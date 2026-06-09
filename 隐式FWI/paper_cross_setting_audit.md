@@ -1,0 +1,573 @@
+# Cross-shape IFWI setting audit
+
+本文档核对论文 `Implicit multiparameter full waveform inversion of multioffset ground penetrating radar data`
+中 Cross-shape IFWI/dropout-IFWI 实验设置，并标注当前复现配置。
+
+## Paper setting
+
+- Model:
+  - Grid: `101 x 101`.
+  - Grid spacing: `10 cm`.
+  - Background: `epsilon_r = 4`, `sigma = 3 mS/m`.
+  - Upper-left anomaly: `epsilon_r = 1`, `sigma = 0.1 mS/m`.
+  - Lower-right anomaly: `epsilon_r = 8`, `sigma = 10 mS/m`.
+- Acquisition:
+  - `32` transmitting antennas.
+  - `64` receiving antennas.
+  - Perfect illumination around the anomalies.
+  - Receiver trace order: top-left -> top-right -> bottom-right -> bottom-left -> back to top-left.
+- Source and recording:
+  - Ricker wavelet.
+  - Dominant frequency: `100 MHz`.
+  - Maximum recording time: `100 ns`.
+  - Time interval: `0.2 ns`.
+  - Implied time steps in this codebase: `500`.
+- Network:
+  - Coordinate input: `(depth, distance)` / spatial coordinates.
+  - Output: relative permittivity and conductivity.
+  - MLP with `4` hidden layers.
+  - `128` neurons per hidden layer.
+  - Sine activation with scaling factor `omega0 = 30`.
+  - Output parameterization: standardized model values, `m = m_tilde * std + mean`.
+  - Pretrain on homogeneous initial models.
+- Dropout-IFWI:
+  - Default dropout probability: `p = 0.2`.
+  - Dropout is applied to hidden neurons during inversion.
+
+## Current paper-aligned reproduction
+
+- Config:
+  - `configs/paper_cross_dropout_ifwi_siren_paper_aligned_offset0_lr1e5_train150.json`
+- Matched settings:
+  - `101 x 101`, `dx = dz = 0.1 m`.
+  - Physical values match the paper; conductivity is stored as S/m in code.
+  - `32` sources and `64` receivers.
+  - Perimeter order starts at top-left and walks clockwise.
+  - `freq = 100 MHz`, `dt = 0.2 ns`, `steps = 500`.
+  - SIREN-style `4 x 128` MLP, `omega0 = 30`.
+  - Dropout `p = 0.2`.
+  - Homogeneous pretraining target: `epsilon_r = 4`, `sigma = 0.003 S/m`.
+  - Standardized output mapping with model-level statistics:
+    - `epsilon_mean = 4.029506683349609`
+    - `epsilon_std = 0.8583717942237854`
+    - `sigma_mean = 0.0031209783628582954 S/m`
+    - `sigma_std = 0.0012958997394889593 S/m`
+
+## Known deviations and uncertainty
+
+- The paper does not disclose the exact Cross-shape IFWI learning rate or epoch count. Current reproduction uses:
+  - `pretrain_epochs = 1000`
+  - `epochs = 150`
+  - `learning_rate = 1e-5`
+  - `learning_rate_milestones = [80, 120]`
+  - `learning_rate_gamma = 0.3`
+- The paper says mean/std do not need to be perfectly accurate, but does not list the actual values. Current reproduction uses the
+  true model-level statistics for the synthetic Cross-shape model.
+- Current implementation keeps hard physical clamps:
+  - `epsilon_r in [1, 8]`
+  - `sigma in [0.0001, 0.01] S/m`
+  These clamps are not explicitly stated in the paper; they are retained as numerical safeguards for the local FDTD/autograd bridge.
+- The source/receiver geometry is a perimeter approximation aligned with the paper text and trace order. Exact figure-pixel antenna
+  coordinates are not available from the paper text.
+- This code uses the local CPU/MPI forward solver bridge. It is not the authors' original solver implementation.
+
+## Current observation geometry
+
+- The current paper-aligned geometry is a full rectangular perimeter acquisition on a `10 m x 10 m` model.
+- Grid coordinates are `(x, z)`; with `dx = dz = 0.1 m`, physical coordinates are `(x * 0.1, z * 0.1)`.
+- Sources:
+  - `32` transmitting antennas.
+  - Evenly sampled along the model boundary.
+  - The first source is at grid `(0, 0)` / physical `(0.0 m, 0.0 m)`.
+  - The source path walks clockwise: top edge -> right edge -> bottom edge -> left edge.
+- Receivers:
+  - `64` receiving antennas.
+  - Evenly sampled along the same model boundary.
+  - Receiver order follows the paper text: top-left -> top-right -> bottom-right -> bottom-left -> back to top-left.
+- Diagnostic plot:
+  - `runs/diagnostics/paper_cross_acquisition_geometry.png`
+
+## 2026-06-07 reproduction results
+
+- Dropout-IFWI, strict paper-aligned attempt:
+  - Config: `configs/paper_cross_dropout_ifwi_siren_paper_aligned_offset0_lr3e5_train150.json`
+  - Run: `runs/paper_cross_dropout_ifwi_siren_paper_aligned_offset0_lr3e5_train150`
+  - Result: loss decreased only from `0.0641727522` to `0.0632917583`; the final parameter maps stayed close to homogeneous.
+  - Visual verdict: no recognizable Cross-shape reconstruction.
+  - Interpretation: `pretrain_epochs=1000` plus dropout likely made the network too close to a constant field for this solver/gradient bridge.
+
+- IFWI without dropout, paper-aligned geometry:
+  - Config: `configs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e5_pretrain50_train150.json`
+  - Run: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e5_pretrain50_train150`
+  - Best epoch by data loss: `16`, loss `0.0728534609`.
+  - Final epoch: `150`, loss `0.2313538194`.
+  - Visual verdict: the final map shows a clear upper-left low-epsilon cross and a lower-right conductivity hot region, but it does not
+    reproduce the paper's lower-right high-epsilon cross.
+  - Interpretation: this local implementation can generate part of the Cross-shape structure, but the paper-level result is not yet reproduced.
+    The next suspect is not the SIREN architecture itself, but inversion scaling/regularization and differences between the local CPU/MPI
+    solver bridge and the authors' original implementation.
+
+- Long-epoch IFWI without dropout:
+  - Config: `configs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e6_pretrain50_train1000.json`
+  - Run: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_lr3e6_pretrain50_train1000`
+  - Change relative to the previous IFWI run: `epochs=1000`, `learning_rate=3e-6`, milestones `[600, 850]`.
+  - Best data-loss epoch: `42`, best loss `0.0464803427`.
+  - Final epoch: `1000`, final loss `0.0722639039`.
+  - Visual verdict: longer training clearly reconstructs the upper-left low-epsilon cross and a lower-right high-conductivity region.
+    It still does not reconstruct the paper's lower-right high-epsilon cross.
+  - Interpretation: insufficient epoch count explained part of the weak 150-epoch result, but not the remaining multiparameter mismatch.
+    The lower-right high-epsilon anomaly is still being absorbed mostly by conductivity and low-epsilon structures, suggesting
+    epsilon/sigma crosstalk or gradient scaling mismatch.
+
+- Gradient-normalized IFWI probe:
+  - Code change: `src/ifwi_gpr/autograd.py` now supports `gradient_normalization = "match_rms"` in `SolverSettings`.
+  - Config: `configs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000.json`
+  - Partial run stopped at epoch `250`: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000`
+  - Diagnostic plot: `runs/diagnostics/plain_vs_gradnorm_epoch250.png`
+  - Result at epoch `250`:
+    - Plain right anomaly: `epsilon mean = 3.608308`, `sigma mean = 0.00469434`.
+    - Gradnorm right anomaly: `epsilon mean = 3.444789`, `sigma mean = 0.00301282`.
+  - Interpretation: equal-RMS gradient normalization suppresses the sigma update, but it does not push the lower-right epsilon anomaly upward.
+    This suggests the remaining mismatch is not just a sigma-gradient-magnitude problem.
+
+- Epoch-250 gradient visualization for the gradient-normalized probe:
+  - Figure: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_gradient_maps.png`
+  - Raw gradient RMS:
+    - epsilon: `5.573044832442066e-05`
+    - sigma: `0.00605674501905036`
+  - Normalized gradient RMS:
+    - epsilon: `0.0005809863243694379`
+    - sigma: `0.0005809863373721811`
+  - Lower-right anomaly ROI:
+    - normalized descent direction for epsilon: `-2.0297129594837315e-05`
+    - normalized descent direction for sigma: `0.000146066551678814`
+  - Interpretation: even after RMS matching, the descent direction lowers or does not raise lower-right epsilon while raising lower-right sigma.
+    This explains why the lower-right high-epsilon cross is not recovered.
+
+- Epsilon-gradient finite-difference audit:
+  - Figure: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_epsilon_block_fd_vs_adjoint.png`
+  - Block finite-difference file: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_epsilon_block_fd_5x5.json`
+  - Time-index variant file: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_epsilon_gradient_variant_compare.json`
+  - Result: current epsilon adjoint gradient agrees in sign with 5x5 block finite differences in only `15/25` blocks.
+  - Tested simple variants:
+    - global sign flip: worse, `10/25`.
+    - adjoint `k-1`: `12/25`.
+    - adjoint `k+1`: `14/25`.
+    - forward-difference `k-1`: `14/25`.
+    - forward-difference `k+1`: `12/25`.
+  - Interpretation: the epsilon-gradient issue is not just a global sign error or a one-sample time shift.
+    The more likely cause is that the continuous-style epsilon gradient `ep0 * adjoint_field * forward_diff`
+    is not the exact discrete adjoint of the local FDTD update that uses epsilon-dependent `ca` and `cb`.
+
+- Discrete `ca/cb` epsilon-gradient candidate:
+  - Figure: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_epsilon_fd_current_vs_discrete_candidate.png`
+  - Variant file: `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/epoch_250_epsilon_discrete_gradient_variant_compare.json`
+  - Best simple candidate tested: `discrete_adj_minus1`.
+  - Result: `15/25` block signs matched finite differences, correlation `0.4012`.
+  - Interpretation: including local derivatives of `ca` and `cb` improves correlation versus the current continuous-style gradient,
+    but it is still not reliable enough for training. Missing terms may include the exact adjoint source injection, source `cb`
+    dependence, CPML memory-state terms, or a more substantial time-layer mismatch.
+
+- Shot-wise / ROI epsilon-gradient audit:
+  - New scripts:
+    - `src/ifwi_gpr/diagnose_shotwise_gradients.py`
+    - `src/ifwi_gpr/diagnose_roi_gradients.py`
+  - Shot-wise block figure:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_shotwise_epsilon_fd_vs_adjoint_0_8_16_24.png`
+  - ROI-by-shot figure:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_roi_gradient_fd_by_shot.png`
+  - ROI-by-shot summary:
+    - `left_cross epsilon`: FD sum `0.1778198409`, adjoint sum `0.0545800932`, `30/32` shots same sign, correlation `0.9925`.
+    - `left_cross sigma`: FD sum `21.8389450808`, adjoint sum `7.3321374655`, `32/32` shots same sign, correlation `0.9897`.
+    - `right_cross epsilon`: FD sum `-0.0023007115`, adjoint sum `0.0187533051`, `23/32` shots same sign, correlation `0.8327`.
+    - `right_cross sigma`: FD sum `-41.5956120633`, adjoint sum `-14.6669765413`, `32/32` shots same sign, correlation `0.9460`.
+  - Interpretation:
+    - The failure is now localized: left-cross epsilon and both sigma ROIs are directionally consistent, while right-cross epsilon has a full-shot summed sign conflict.
+    - For the right high-permittivity cross, finite difference says increasing epsilon reduces data loss, but the current adjoint gradient says to decrease epsilon.
+    - This directly explains why longer training and RMS gradient normalization still do not recover the lower-right high-epsilon cross.
+  - Priority:
+    - Treat the epsilon adjoint formula as the primary blocker.
+    - Test a stricter discrete adjoint around `reverse_time_loop`, `ca_r`, source-injection scaling, source `cb` derivative, and CPML memory terms before spending more time on long dropout-IFWI runs.
+
+- Adjoint variant audit:
+  - Script:
+    - `src/ifwi_gpr/diagnose_adjoint_roi_variants.py`
+  - Figures:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_right_cross_epsilon_adjoint_variant_audit.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_gradnorm_lr3e6_pretrain50_train1000/figures/epoch250_left_cross_epsilon_adjoint_variant_audit.png`
+  - Tested:
+    - continuous-style current gradient with `ca_r`, `ca`, `ca=1`, receiver-source scaling, and ±1 time shifts.
+    - discrete `ca/cb` epsilon derivative:
+      - `dca/depsilon_r = ep0 * sigma * dt / (epsilon_abs + sigma*dt/2)^2`
+      - `dcb/depsilon_r = -ep0 / (epsilon_abs + sigma*dt/2)^2`
+      - `dE_new/depsilon_r = dca * E_old + dcb * curlH_dt`
+  - Right-cross epsilon:
+    - Current formula: `23/32` same-sign shots, correlation `0.8327`, FD sum `-0.00230071`, adjoint sum `+0.0187533`.
+    - `ca_r_raw_adj_plus1`: `30/32` same-sign shots, correlation `0.9745`, but adjoint sum remains positive.
+    - `neg_ca_r_discrete_adj_plus1`: `32/32` same-sign shots, correlation `0.9889`, FD sum `-0.00230071`, adjoint sum `-0.00491688`.
+  - Left-cross epsilon cross-check:
+    - `neg_ca_r_discrete_adj_plus1`: `32/32` same-sign shots, correlation `0.9839`, FD sum `+0.17782`, adjoint sum `+0.831463`.
+  - Interpretation:
+    - A one-sample adjoint shift explains much of the local shot-wise sign mismatch but not the aggregate direction.
+    - The negative discrete `ca/cb` derivative with `adjoint_shift=+1` matches finite differences for both epsilon anomalies.
+    - This candidate should be promoted to an optional training gradient mode for a short IFWI probe before more long-run/dropout experiments.
+
+- Discrete-epsilon training probe:
+  - Config:
+    - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120.json`
+  - Run:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120`
+  - Implemented mode:
+    - `solver.epsilon_gradient_mode = "negative_discrete_ca_cb_adj_plus1"`
+    - epsilon uses the negative discrete `ca/cb` derivative with `adjoint_idx = k+1`.
+    - sigma remains on the reference continuous-style formula with `adjoint_idx = k`.
+  - Loss:
+    - first epoch loss `0.0768610314`
+    - best epoch `51`, best loss `0.0483082198`
+    - final epoch 120 loss `0.0729257762`
+  - ROI trend:
+    - `left_cross epsilon`: `3.999256` at epoch 1 -> `3.267344` at epoch 120.
+    - `right_cross epsilon`: `4.000874` at epoch 1 -> `4.218783` at epoch 120.
+    - `left_cross sigma`: `0.00298376` at epoch 1 -> `0.00292002` at epoch 120.
+    - `right_cross sigma`: `0.00300664` at epoch 1 -> `0.00309776` at epoch 120.
+  - Figures:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120/figures/parameter_maps.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120/figures/loss_curve.png`
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr3e6_pretrain50_train120/figures/epoch1_40_80_discrete_epsilon_probe_maps.png`
+  - Interpretation:
+    - The right high-epsilon ROI now moves upward instead of downward, unlike the previous reference-gradient `match_rms` probe where the right epsilon mean dropped to about `3.44` by epoch 250.
+    - The lower-right high-epsilon structure is still diffuse and not yet paper-quality.
+    - Data loss rebounds after epoch 51, so the next reproduction run should reduce LR or add early stopping rather than simply extend this exact config.
+
+- Lower-LR discrete-epsilon stability probe:
+  - Config:
+    - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr1e6_pretrain50_train80.json`
+  - Run:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr1e6_pretrain50_train80`
+  - Loss:
+    - first epoch loss `0.0768610314`
+    - best/final epoch `80`, loss `0.0518485345`
+    - loss decreases monotonically over the 80-epoch run.
+  - ROI trend:
+    - `left_cross epsilon`: `3.999256` at epoch 1 -> `3.793117` at epoch 80.
+    - `right_cross epsilon`: `4.000874` at epoch 1 -> `4.057909` at epoch 80.
+    - `right_cross sigma`: `0.00300664` at epoch 1 -> `0.00302463` at epoch 80.
+  - Interpretation:
+    - `lr=1e-6` stabilizes data loss but updates are too conservative; the right high-epsilon anomaly rises only weakly.
+    - The useful regime is likely between `1e-6` and `3e-6`, or `3e-6` with early stopping around the best-loss epoch.
+
+- Middle-ground `lr=2e-6` discrete-epsilon probe:
+  - Config:
+    - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_pretrain50_train100.json`
+  - Run:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_pretrain50_train100`
+  - Loss:
+    - first epoch loss `0.0768610314`
+    - best epoch `73`, best loss `0.0466274992`
+    - final epoch 100 loss `0.0490118563`
+  - ROI trend:
+    - `left_cross epsilon`: `3.999256` at epoch 1 -> `3.428636` at epoch 100.
+    - `right_cross epsilon`: `4.000874` at epoch 1 -> `4.152974` at epoch 100.
+    - `right_cross sigma`: `0.00300664` at epoch 1 -> `0.00306038` at epoch 100.
+  - Diagnostic figure:
+    - `runs/diagnostics/discrete_epsilon_lr_sweep_loss_roi.png`
+  - Interpretation:
+    - `lr=2e-6` currently gives the best data-loss minimum among the discrete-epsilon probes and avoids the severe `lr=3e-6` rebound.
+    - It is still not paper-quality visually; the right high-epsilon cross is raised but diffuse.
+    - Recommended next step is staged refinement from the `lr=2e-6` best checkpoint/epoch, especially epsilon-first or sigma-suppressed training before returning to full two-parameter updates.
+
+- Freeze-sigma epsilon-first probe:
+  - Config:
+    - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma_train80.json`
+  - Run:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma_train80`
+  - Diagnostic figure:
+    - `runs/diagnostics/discrete_epsilon_freeze_sigma_compare.png`
+  - Loss:
+    - first epoch loss `0.0766075328`
+    - best/final epoch `80`, loss `0.0455817617`
+    - lower than the full two-parameter `lr=2e-6` best loss `0.0466274992`.
+  - ROI trend:
+    - `left_cross epsilon`: `3.999256` at epoch 1 -> `3.557844` at epoch 80.
+    - `right_cross epsilon`: `4.000874` at epoch 1 -> `4.123716` at epoch 80.
+    - sigma remains fixed at `0.003 S/m`.
+  - Interpretation:
+    - Epsilon-only/freeze-sigma training is stable and lowers data loss, but it does not make the right high-epsilon cross sharper than the full two-parameter run.
+    - The next staged experiment should release sigma after an epsilon-only warmup, for example `freeze_sigma_epochs=60`, rather than freezing sigma for the whole run.
+
+- Freeze-sigma-60 release staged run:
+  - Config:
+    - `configs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120.json`
+  - Run:
+    - `runs/paper_cross_ifwi_siren_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train120`
+  - Diagnostic figure:
+    - `runs/diagnostics/discrete_epsilon_staged_compare.png`
+  - Strategy:
+    - freeze sigma for epochs 1-60.
+    - release sigma for epochs 61-120.
+    - keep discrete epsilon gradient mode `negative_discrete_ca_cb_adj_plus1`.
+  - Loss:
+    - first epoch loss `0.0766075328`
+    - best epoch `85`, best loss `0.0439301170`
+    - final epoch 120 loss `0.0450320728`
+    - current best data-loss among the discrete-epsilon runs.
+  - ROI trend:
+    - `left_cross epsilon`: `3.999256` at epoch 1 -> `3.357989` at epoch 120.
+    - `right_cross epsilon`: `4.000874` at epoch 1 -> `4.179674` at epoch 120.
+    - `right_cross sigma`: fixed `0.003000` through epoch 60 -> `0.003062` at epoch 120.
+  - Interpretation:
+    - Staged sigma release improves data loss and gives a slightly stronger right high-epsilon rise than the full two-parameter `lr=2e-6` run.
+    - The right high-epsilon anomaly is still diffuse rather than a clean cross.
+    - The next reproduction push should use this staged strategy as the baseline and vary architecture/regularization, not return to the old reference epsilon gradient.
+
+- FR-INR staged probes:
+  - Low-scale FR-INR config:
+    - `configs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_lr2e6_freezesigma60_train80.json`
+    - `alpha=0.01`, `lr=2e-6`, `freeze_sigma_epochs=60`.
+    - Training interrupted/aborted after writing snapshots through epoch 40; no final metrics.
+    - Offline recomputed snapshot losses:
+      - epoch 1 loss `0.0642670350`
+      - epoch 20 loss `0.0641695469`
+      - epoch 40 loss `0.0641123772`
+    - ROI trend through epoch 40:
+      - `left_cross epsilon`: `4.000422 -> 3.998473`
+      - `right_cross epsilon`: `4.000299 -> 3.999314`
+    - Interpretation: almost no inversion movement.
+  - Higher-scale FR-INR config:
+    - `configs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_alpha01_lr2e5_freezesigma40_train40.json`
+    - `alpha=0.1`, `lr=2e-5`, `freeze_sigma_epochs=40`.
+    - Run:
+      - `runs/paper_cross_ifwi_frinr_paper_aligned_offset0_discreteeps_alpha01_lr2e5_freezesigma40_train40`
+    - Loss:
+      - first loss `0.0641778708`
+      - best/final epoch 40 loss `0.0632465780`
+    - ROI trend:
+      - `left_cross epsilon`: `3.999813 -> 3.997590`
+      - `right_cross epsilon`: `3.999808 -> 4.002174`
+    - Visual:
+      - final maps remain near homogeneous under the paper-scale colorbar.
+  - Comparison:
+    - SIREN staged at epoch 40 already has `right_cross epsilon = 4.067552`.
+    - Current FR-INR probes do not improve Cross-shape recovery and should not replace the SIREN staged baseline.
+  - Interpretation:
+    - The current FR-INR adaptation is likely too tightly pre-trained to the homogeneous model and/or too conservative in Fourier-reparameterized update scale.
+    - Further FR-INR work needs separate architecture/initialization tuning, not just swapping the architecture in the current staged config.
+
+- SIREN staged-best refinement:
+  - Code support added:
+    - `build_initial_model` can now load `.npy` maps from `initial.epsilon_path` and `initial.sigma_path`.
+    - `training.restore_best_pretrain=true` restores the lowest-loss pretrain weights before FWI starts.
+    - Unit tests increased to `18`, all passing.
+  - Config:
+    - `configs/paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80.json`
+  - Effective run:
+    - `runs/paper_cross_ifwi_siren_refine_from_staged_best_discreteeps_lr8e7_freezesigma_train80_run001`
+  - Diagnostic figure:
+    - `runs/diagnostics/staged_vs_refine_best_epsilon.png`
+  - Strategy:
+    - initialize from staged best physical maps.
+    - fit the SIREN to those maps with best-pretrain restore.
+    - keep sigma fixed to the staged best sigma map.
+    - refine epsilon only at `lr=8e-7` for 80 epochs.
+  - Loss:
+    - first inversion loss `0.0437644348`
+    - best epoch `34`, best loss `0.0413372815`
+    - final epoch `80`, final loss `0.0420577340`
+    - improves over staged best loss `0.0439301170`.
+  - ROI trend:
+    - staged best right epsilon mean: `4.159714`.
+    - refine best right epsilon mean: `4.170337`.
+    - refine final right epsilon mean: `4.206590`.
+    - staged best/fixed right sigma mean: `0.0030549`.
+  - Visual interpretation:
+    - The left low-epsilon cross is clear.
+    - The right high-epsilon target brightens slightly but remains diffuse and streak-like, not a clean cross.
+    - The best data-fit epoch is earlier than the highest right-epsilon epoch, so visual sharpening and data misfit are not perfectly aligned.
+  - Current reproduction implication:
+    - More epochs on the same setup are unlikely to solve the right-cross geometry by themselves.
+    - The next targeted experiments should test dropout-IFWI/regularization and illumination/shot diagnostics, while keeping the corrected discrete epsilon gradient as the baseline.
+
+- Dropout-IFWI staged-best refinement:
+  - Paper anchor:
+    - Default dropout probability is `p=0.2`.
+    - The paper discussion reports dropout as a high-frequency-noise mitigation strategy; for `omega0=30`, dropout can increase data misfit, while `omega0=20` plus dropout is often a better regularized setting.
+  - Config:
+    - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60.json`
+  - Run:
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p02_lr8e7_freezesigma_train60`
+  - Diagnostic figure:
+    - `runs/diagnostics/refine_dropout_p02_vs_nodrop_epsilon.png`
+  - Strategy:
+    - initialize from staged best physical maps.
+    - disable dropout during map pretraining (`pretrain_dropout=false`).
+    - enable dropout during inversion with `p=0.2`.
+    - keep sigma fixed to the staged best sigma map.
+    - refine epsilon at `lr=8e-7` for 60 epochs.
+  - Loss:
+    - best/final epoch `60`
+    - best/final loss `0.0383246876`
+    - staged best loss `0.0439301170`
+    - no-dropout refinement best loss `0.0413372815`
+  - ROI trend:
+    - right epsilon mean `4.205944`
+    - left epsilon mean `3.248347`
+    - epsilon range `1.0` to `4.965847`
+    - right sigma remains fixed at `0.0030549`.
+  - Visual interpretation:
+    - Background texture and local streaks are much cleaner than the no-dropout refinement.
+    - The lower-right high-epsilon anomaly is still not a clean paper-like cross, but it is smoother and more continuous.
+  - Current reproduction implication:
+    - Dropout refinement is currently the best data-fit candidate.
+    - Next priority is a small dropout sweep (`p=0.1` versus `p=0.2`) and an `omega0=20, p=0.2` probe, because the paper discussion suggests dropout is more useful when the sine scaling is not too high.
+
+- Dropout/omega small sweep:
+  - New configs:
+    - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60.json`
+    - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_omega20_p02_lr8e7_freezesigma_train60.json`
+  - Runs:
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60`
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_omega20_p02_lr8e7_freezesigma_train60`
+  - Diagnostic artifacts:
+    - `runs/diagnostics/dropout_sweep_p0_p01_p02_epsilon.png`
+    - `runs/diagnostics/dropout_omega_sweep_best_epsilon.png`
+    - `runs/diagnostics/dropout_omega_sweep_metrics.json`
+  - Results:
+    - staged best: loss `0.0439301170`, epsilon R2 `0.082162`, SSIM `0.202898`.
+    - `omega30,p=0`: loss `0.0413372815`, epsilon R2 `0.103209`, SSIM `0.225768`.
+    - `omega30,p=0.1`: loss `0.0373394936`, epsilon R2 `0.113914`, SSIM `0.231592`.
+    - `omega30,p=0.2`: loss `0.0383246876`, epsilon R2 `0.120549`, SSIM `0.248233`.
+    - `omega20,p=0.2`: loss `0.0374129526`, epsilon R2 `0.111918`, SSIM `0.227874`.
+  - Interpretation:
+    - Dropout refinement is consistently better than no-dropout refinement for both data loss and epsilon image metrics.
+    - `omega30,p=0.1` is currently the best data-fit reproduction candidate.
+    - `omega30,p=0.2` has the strongest epsilon R2/SSIM and the largest right-epsilon rise.
+    - `omega20,p=0.2` is smoother and has low MAPE, but under-recovers the lower-right high-epsilon amplitude.
+    - The lower-right high-epsilon target is still not a clean cross, so the remaining gap is likely not solved by dropout/omega alone.
+  - Next targeted checks:
+    - `omega30,p=0.15` as a compromise setting.
+    - short sigma-release refinement from the `p=0.1` best map.
+    - shot/receiver illumination diagnostics for the lower-right anomaly.
+
+- Follow-up: `p=0.15` and `p=0.1` sigma release:
+  - `omega30,p=0.15` config:
+    - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p015_lr8e7_freezesigma_train60.json`
+  - `omega30,p=0.15` run:
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p015_lr8e7_freezesigma_train60`
+  - Result:
+    - best epoch `14`
+    - best loss `0.0371642634`
+    - right epsilon mean `4.122390`
+    - epsilon R2 `0.096037`
+    - epsilon SSIM `0.207616`
+  - Interpretation:
+    - `p=0.15` is not a useful compromise despite a low data loss; its structure metrics and right-epsilon recovery are weaker.
+
+  - `p=0.1` sigma-release config:
+    - `configs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50.json`
+  - `p=0.1` sigma-release run:
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50`
+  - Diagnostic figure:
+    - `runs/diagnostics/p01_freeze_vs_release_sigma_best_maps.png`
+  - Result:
+    - best/final epoch `50`
+    - best/final loss `0.0357894711`
+    - right epsilon mean `4.199549`
+    - epsilon R2 `0.123990`
+    - epsilon SSIM `0.250421`
+    - right sigma mean `0.0030521`
+    - sigma std `0.0001059`
+  - Interpretation:
+    - Sigma release improves data fit and epsilon image metrics without causing a strong right-cross sigma takeover.
+    - The conductivity map is smoother after release, suggesting the joint refinement is acting as a gentle correction rather than unstable multiparameter crosstalk.
+    - The lower-right high-epsilon anomaly remains diffuse, so the clean-cross gap is likely tied to geometry/illumination or remaining gradient/modeling approximations.
+  - Current best reproduction candidate:
+    - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50`
+  - Next priority:
+    - illumination / shot contribution heatmap for the lower-right cross.
+    - optional lower-LR continuation from the release-sigma best map.
+
+- Illumination and continuation diagnostics:
+  - Added script:
+    - `src/ifwi_gpr/diagnose_anomaly_illumination.py`
+  - Diagnostic artifacts:
+    - `runs/diagnostics/cross_shape_anomaly_illumination.json`
+    - `runs/diagnostics/cross_shape_anomaly_illumination.png`
+  - Method:
+    - compare full true data with data after removing the left anomaly and after removing the right anomaly.
+    - use mean squared waveform deltas as anomaly visibility proxies.
+  - Result:
+    - left anomaly total contribution energy `0.0437383725`
+    - right anomaly total contribution energy `0.0207480779`
+    - right/left contribution ratio `0.4743678531`
+    - strongest right-anomaly sources are on the bottom/right sides, for example source 20 `[100, 50]` and source 12 `[50, 100]`.
+    - strongest right-anomaly receivers are also on the bottom/right sides, for example receiver 40 `[100, 50]` and receiver 24 `[50, 100]`.
+  - Interpretation:
+    - The lower-right anomaly is visible, but much less energetic than the upper-left one in the current data.
+    - This supports the conclusion that the lower-right clean-cross gap is partly an illumination/conditioning issue, not just a network training-duration issue.
+
+  - Low-LR continuation config:
+    - `configs/paper_cross_dropout_ifwi_siren_continue_from_releasesigma_best_p01_lr2e7_train60.json`
+  - Run:
+    - `runs/paper_cross_dropout_ifwi_siren_continue_from_releasesigma_best_p01_lr2e7_train60`
+  - Result:
+    - best/final epoch `60`
+    - best/final loss `0.0364450552`
+    - right epsilon mean `4.209872`
+    - epsilon R2 `0.123934`
+    - epsilon SSIM `0.253472`
+    - right sigma mean `0.0030569`
+    - sigma std `0.0001010`
+  - Interpretation:
+    - continuation improves right-epsilon amplitude and SSIM slightly but does not improve data loss.
+    - longer low-LR continuation alone is not enough to recover a clean lower-right cross.
+  - Current selection:
+    - data-fit best remains `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50`.
+    - structure/SSIM reference is `runs/paper_cross_dropout_ifwi_siren_continue_from_releasesigma_best_p01_lr2e7_train60`.
+
+- Dropout mode audit and correction:
+  - Issue found:
+    - `training.pretrain_dropout=false` had accidentally affected the inversion-loop model mode.
+    - Previous dropout sweep runs with `pretrain_dropout=false` used dropout during pretraining but ran deterministic `network.eval()` during inversion.
+  - Fix:
+    - `_pretrain_network` now uses `network.eval()` only when pretraining dropout is explicitly disabled.
+    - the inversion loop always enters `network.train()`, so dropout is active during FWI when configured.
+  - Verification:
+    - `python -m unittest discover -s tests -v`
+    - `Ran 18 tests`
+    - `OK`
+  - Corrected true inversion-dropout probe:
+    - Config:
+      - `configs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60.json`
+    - Run:
+      - `runs/paper_cross_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p01_lr8e7_freezesigma_train60_run001`
+    - Result:
+      - best epoch `41`
+      - best loss `0.1688517928`
+      - final loss `0.2185796946`
+      - best right epsilon mean `4.102800`
+      - best epsilon R2 `-0.191151`
+      - best epsilon SSIM `0.132385`
+    - Interpretation:
+      - True inversion-time dropout with `p=0.1` is unstable in the current FDTD/autograd setup.
+      - The previous low-loss dropout-labelled runs are better described as dropout-pretrain regularized deterministic IFWI, not strict dropout-IFWI.
+  - Updated current selection:
+    - Best data-fit candidate remains useful but should be labelled as regularized deterministic refinement:
+      - `runs/paper_cross_dropout_ifwi_siren_refine_from_p01best_discreteeps_p01_lr5e7_releasesigma_train50`
+    - Strict dropout-IFWI needs a fresh small-rate probe, for example `p=0.02` or `p=0.05`, or a fixed-mask / averaged-dropout implementation.
+
+  - Small-rate true inversion dropout:
+    - Config:
+      - `configs/paper_cross_true_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p002_lr5e7_freezesigma_train40.json`
+    - Run:
+      - `runs/paper_cross_true_dropout_ifwi_siren_refine_from_staged_best_discreteeps_p002_lr5e7_freezesigma_train40`
+    - Result:
+      - best epoch `13`
+      - best loss `0.0698378757`
+      - final loss `0.0714104027`
+      - right epsilon mean `4.120483`
+      - epsilon R2 `0.030717`
+      - epsilon SSIM `0.184220`
+    - Interpretation:
+      - `p=0.02` is less unstable than `p=0.1`, but still worse than no-dropout refinement.
+      - Ordinary random inversion dropout is currently not the right mainline for this CPU FDTD/autograd bridge.
+      - Future strict dropout-IFWI should use a fixed mask, MC averaging, or slower mask refresh.
