@@ -299,3 +299,31 @@ Open questions:
 
 - Need exact DOI for Ernst et al. 2007 and Hunziker et al. 2025 if not already in local metadata.
 - Kuroda 2007 remains unread and could complement Ernst 2007.
+
+## 2026-06-16 Heartbeat 10
+
+Status: started polishing the main report into a more presentation-ready Chinese draft.
+
+Completed:
+
+- Replaced the old English `working draft` status line in `Part1_GPR_FWI_theory_and_methods.md`.
+- Added:
+  - `0. 执行摘要`
+  - `0.1 证据边界`
+  - `0.2 术语说明`
+- Clarified the current evidence levels:
+  - PDF-formula-checked
+  - PDF-skimmed
+  - local-doc-checked
+- Updated `review_checklist.md` to mark the Chinese presentation-tone pass as started/completed for the opening section.
+
+Next heartbeat:
+
+1. Continue Chinese polishing section by section, especially Sections 1-4.
+2. Add page/equation anchors for the most important formulas if time permits.
+3. Commit this polish pass if the diff is clean.
+
+Open questions:
+
+- Whether to keep English technical terms inline for readability or move more of them into a glossary.
+- Whether to split the final report into a concise presentation version and a longer technical appendix.

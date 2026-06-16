@@ -1,6 +1,51 @@
 # 第一部分：GPR 数据 FWI 的数学理论与方法综述
 
-Status: working draft. This file is intentionally incomplete and will be expanded across heartbeats.
+版本说明：本文是第一部分汇报的可用草稿，已经覆盖从 Maxwell 方程、GPR 正演、FWI 目标函数、伴随梯度，到单/双参数反演、crosstalk、目标函数、正则化、照明补偿和后续实验设计的主线。当前版本的目标是建立清晰理论框架；逐篇文献页码、公式编号和完整扩展综述仍需后续校对。
+
+## 0. 执行摘要
+
+GPR-FWI 可以被理解为一个由 Maxwell 方程约束的非线性优化问题。地下介质参数 \(\mathbf{m}\)，例如相对介电常数 \(\epsilon_r\) 和电导率 \(\sigma\)，并不直接生成数据，而是先通过电磁波正演生成波场 \(\mathbf{u}(\mathbf{m})\)，再由接收算子 \(\mathbf{P}\) 采样为合成雷达数据。因此，GPR-FWI 的核心链条是：
+
+\[
+\mathbf{m}
+\rightarrow
+\mathbf{u}(\mathbf{m})
+\rightarrow
+\mathbf{P}\mathbf{u}(\mathbf{m})
+\rightarrow
+\Phi(\mathbf{m}).
+\]
+
+第一性原理上，GPR-FWI 和地震 FWI 的共同点是“用完整波形约束地下参数”；差异在于 GPR 的物理基础是电磁波 Maxwell 方程，而不是声波/弹性波方程。因此，GPR 中 \(\epsilon_r\)、\(\sigma\)、source wavelet、天线耦合、近场效应和介质衰减都比普通声波 FWI 更突出。
+
+从梯度推导看，伴随状态法提供了避免显式构造完整 Jacobian 的办法。直观地说，正演波场告诉我们“哪里被震源照亮”，伴随波场告诉我们“哪里能解释接收端残差”，二者在时间上的相关累加构成模型梯度。对二阶电场方程而言，\(\epsilon\) 梯度与 adjoint field 和 \(\partial_{tt}\mathbf{E}\) 相关，\(\sigma\) 梯度与 adjoint field 和 \(\partial_t\mathbf{E}\) 相关；在 Meles et al. (2012) 的一阶/FDTD sensitivity 表达中，\(\epsilon\) sensitivity 与 forward electric field 的时间导数相关，而 \(\sigma\) sensitivity 与 forward electric field 本身相关。两种写法的导数阶数差异来自方程形式和变量选择，后续需要在离散实现中进一步核对。
+
+从反演方法看，单参数 \(\epsilon_r\) 反演适合作为最小可验证实验，因为它主要控制速度和相位；\(\sigma\) 主要影响振幅和衰减，但也容易与 source wavelet、几何扩散和噪声混淆。双参数 \((\epsilon_r,\sigma)\) 反演的关键困难是 crosstalk：两个参数的 sensitivity kernels 不正交，Hessian 的非对角块会让一个参数的误差映射到另一个参数中。Lavoue et al. (2014) 的频域双参数研究说明，parameter scaling 和 conductivity regularization 对稳定双参数反演至关重要。
+
+从目标函数看，L2 waveform misfit 是最直接的选择，但容易 cycle skipping，也容易受 source wavelet 和振幅误差影响。Source-independent、envelope、Laplace-domain、frequency-domain multiscale、optimal-transport-to-least-squares switching 等方法，本质上都是在改变“残差如何被定义”和“残差如何变成 adjoint source”。这些方法并不替代物理正演，而是在不同反演阶段改善目标函数的几何形状。
+
+后续实验不应直接跳到最复杂的 IFWI 或 Marmousi/Overthrust 模型，而应按照“最小闭环 -> 梯度验证 -> 单参数 -> 双参数 -> crosstalk 诊断 -> illumination compensation -> 目标函数/正则化对比 -> 网络重参数化”的顺序逐步打开复杂度。
+
+## 0.1 证据边界
+
+本文当前结论来自三类来源：
+
+- `PDF-formula-checked`：已经从本地 PDF 中定位到公式或方法段落，例如 Meles et al. (2012)、Lavoue et al. (2014)、Liu et al. (2022)、Meng et al. (2019)。
+- `PDF-skimmed`：已经核实标题、摘要、关键方法页或结论页，但尚未完整精读全文，例如 Busch et al. (2012)、Sun et al. (2024)、Ernst et al. (2007)、Hunziker et al. (2025)。
+- `local-doc-checked`：来自本地 README/progress/migration map，用于连接已有实验线，但不能当作外部文献结论。
+
+更细的证据状态见 `source_status.md`。
+
+## 0.2 术语说明
+
+- GPR：Ground Penetrating Radar，探地雷达。
+- FWI：Full Waveform Inversion，全波形反演。
+- Time-domain：时域，直接在时间序列上正演和匹配波形。
+- Frequency-domain：频域，选择若干频率分量进行建模和反演。
+- Laplace-domain：Laplace 域，常用于提取平滑/长波长信息，为时域 FWI 提供初始模型。
+- Adjoint-state method：伴随状态法，用一次正演和一次伴随传播高效计算梯度。
+- Crosstalk：多参数反演中一个参数的误差被另一个参数吸收或误解释。
+- Illumination compensation：照明补偿，用来修正不同区域因 source-receiver 覆盖不同而导致的梯度尺度不均。
 
 ## 1. 研究问题：为什么 GPR-FWI 是一个非线性 PDE 约束优化问题
 

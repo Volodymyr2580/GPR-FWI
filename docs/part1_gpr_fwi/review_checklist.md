@@ -14,7 +14,8 @@
 - [ ] 每个关键文献结论补充更细引用位置，例如 section/page/equation。
 - [x] 补充更多经典 time-domain crosshole GPR-FWI 文献。
 - [x] 补充 Laplace-domain 和 OT objective 的具体公式或实验结论。
-- [ ] 把 currently English-heavy sections 统一成更适合中文汇报的语气。
+- [x] 把 currently English-heavy sections 统一成更适合中文汇报的语气。
+- [x] 添加中文执行摘要、证据边界和术语说明。
 
 ## Formula Summary
 
