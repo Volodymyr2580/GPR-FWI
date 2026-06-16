@@ -97,6 +97,13 @@ Illumination and resolution relevance:
 - The paper explicitly discusses cumulative sensitivity and formal model resolution as tools for judging where the inversion is actually constrained.
 - For our report, this is the cleanest local reference for explaining illumination imbalance from first principles.
 
+Citation anchors:
+
+- Local PDF page 9: Section IV-A introduces the cost function (12), Jacobian definition (13), and pseudo-Hessian/Taylor expansion around (15).
+- Local PDF page 10: Section IV-B discusses cumulative sensitivity and formal model resolution; Section IV-C gives the Gauss-Newton update (20).
+- Local PDF page 15: Appendix A gives cost-function, gradient, full Hessian, and pseudo-Hessian relations around (A-1)-(A-6).
+- These are local PDF page indices and equation-number anchors; formal reporting should still verify printed page numbers visually.
+
 ## Busch et al. 2012
 
 Status: skimmed from local PDF.

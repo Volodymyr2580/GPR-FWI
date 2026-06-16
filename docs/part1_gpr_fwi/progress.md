@@ -436,3 +436,21 @@ Next heartbeat:
 1. If the heartbeat continues, either perform manual citation-anchor upgrades or start the runnable `minimal_eps_l2_gradient_check` config implementation after user confirmation.
 2. Keep the theory/report artifacts stable unless a specific correction is found.
 3. Continue avoiding `GPR_references/` PDF commits and any large training/inversion runs.
+
+## 2026-06-16 Heartbeat 17
+
+Status: upgraded Meles et al. (2012) citation anchors.
+
+Completed:
+
+- Performed targeted local PDF text checks for Meles et al. (2012), focusing on sensitivity, Jacobian, pseudo-Hessian, model resolution, and Gauss-Newton update pages.
+- Upgraded the Meles row in `citation_anchors.md` from keyword-located to manual-text-checked.
+- Added section/equation anchors for Section IV-A, cost function (12), Jacobian definition (13), pseudo-Hessian/Taylor expansion (15), cumulative sensitivity/model resolution, Gauss-Newton update (20), and Appendix A (A-1)-(A-6).
+- Synchronized the same citation-anchor summary into both `core_paper_notes.md` and `GPR_FWI_core_paper_notes.md`.
+- Updated `source_status.md` and `review_checklist.md` to record the upgraded anchor status.
+
+Next heartbeat:
+
+1. Upgrade one more formula-checked paper, preferably Lavoue et al. (2014), with section/equation anchors for frequency-domain equation, adjoint gradient, scaling, and Tikhonov regularization.
+2. Keep all anchors clearly marked as local PDF page indices until visual page/equation verification is done.
+3. Do not start runnable config implementation without explicit user confirmation.
