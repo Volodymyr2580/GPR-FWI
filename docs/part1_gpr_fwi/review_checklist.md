@@ -35,7 +35,8 @@
 - [x] pseudo-Hessian / illumination normalization。
 - [ ] 核对二阶电场推导和一阶 FDTD sensitivity 的时间导数阶数差异。
 - [ ] 为每个公式补“使用条件”和“离散实现注意事项”。
-- [ ] 与主报告 Section 5-8 的新表述同步，补充单参数/双参数诊断实验中的公式使用提醒。
+- [x] 与主报告 Section 5-8 的新表述同步，补充单参数/双参数诊断实验中的公式使用提醒。
+- [x] 补充 finite-difference gradient check 和 illumination compensation 诊断图提醒。
 
 ## Literature Matrix
 

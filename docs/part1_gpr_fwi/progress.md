@@ -382,3 +382,21 @@ Next heartbeat:
 1. Sync `formula_summary.md` and `GPR_FWI_formula_summary.md` with the new diagnostic wording from the main report and experiment recommendations.
 2. Add short “implementation cautions” near the formula summary sections for single-parameter and biparameter experiments.
 3. Then do a small consistency pass across `README.md`, `progress.md`, and `review_checklist.md`.
+
+## 2026-06-16 Heartbeat 14
+
+Status: synchronized formula summaries with implementation diagnostics.
+
+Completed:
+
+- Updated both `formula_summary.md` and `GPR_FWI_formula_summary.md` from an initial skeleton label to a formula companion description.
+- Added a finite-difference directional derivative check near the adjoint-gradient formulas.
+- Added implementation cautions for residual sign, adjoint-source time order, PML masking, \(\epsilon\)-to-\(\epsilon_r\) chain rule, and staggered-grid interpolation.
+- Added diagnostic guidance for single-parameter and biparameter experiments before trusting simultaneous \((\epsilon_r,\sigma)\) inversion.
+- Added recommended raw-gradient / compensated-gradient / illumination-map diagnostics for pseudo-Hessian or illumination compensation tests.
+
+Next heartbeat:
+
+1. Do a compact consistency pass over `README.md`, `source_status.md`, and the final report references.
+2. If still useful, add page/equation anchors for the most important formula-checked papers.
+3. Keep runnable config creation as a separate implementation task after the theory/report artifacts stabilize.

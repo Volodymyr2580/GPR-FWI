@@ -1,6 +1,6 @@
 # GPR-FWI Formula Summary
 
-This is the initial formula skeleton for Part 1. It will be refined after reading the full methods sections of the core papers.
+This file is the formula companion for Part 1. It collects the main continuous formulas, paper-specific variants, and implementation cautions needed before turning the derivations into GPR-FWI experiments.
 
 ## 1. Maxwell System for GPR
 
@@ -167,6 +167,19 @@ Important:
 
 The sign is convention-dependent. It changes if the Lagrangian is written with \(+\langle\lambda,\mathcal{F}\rangle\) versus \(-\langle\lambda,\mathcal{F}\rangle\), or if the residual is defined as observed minus synthetic instead of synthetic minus observed.
 
+Implementation cautions:
+
+- Always verify the implemented gradient with a finite-difference directional derivative before running large inversions:
+
+\[
+\frac{\Phi(m+h\delta m)-\Phi(m-h\delta m)}{2h}
+\approx
+\langle \nabla\Phi(m),\delta m\rangle.
+\]
+
+- If this check fails, inspect residual sign, adjoint-source time order, PML masking, \(\epsilon\)-to-\(\epsilon_r\) chain rule, and staggered-grid interpolation before tuning the optimizer.
+- The continuous formula only fixes the analytical structure. The final sign and scale are implementation-dependent and must match the discrete FDTD update.
+
 ## 6.1 First-Order Field Sensitivity Form
 
 Meles et al. (2012) use a vector wavefield/FDTD adjoint formulation in which the sensitivity kernels can be summarized as:
@@ -321,6 +334,13 @@ The Gauss-Newton normal equations involve block Hessian terms:
 \]
 
 Crosstalk appears when the off-diagonal blocks are strong or when the two sensitivity kernels explain similar data residuals.
+
+Diagnostic use:
+
+- Start with \(\epsilon_r\)-only inversion while \(\sigma\) is fixed. This tests the phase/arrival-time channel.
+- Then fix \(\epsilon_r\) and invert \(\sigma\). This tests the amplitude/attenuation channel under favorable conditions.
+- Only after those checks should simultaneous \((\epsilon_r,\sigma)\) inversion be trusted.
+- A lower data misfit is not enough evidence for correct biparameter recovery; inspect parameter-specific errors and artifacts.
 
 ## 10. Regularized Objective Skeleton
 
@@ -639,6 +659,13 @@ Interpretation:
 - Strongly illuminated regions often have larger raw gradients.
 - Poorly illuminated regions may have unreliable gradients.
 - The normalization should balance scale without pretending that unilluminated regions contain recoverable information.
+
+Recommended diagnostics:
+
+- Save the raw gradient.
+- Save the compensated gradient.
+- Save a wavefield-energy map or pseudo-Hessian diagonal map.
+- Compare these maps before judging whether illumination compensation is helping or merely amplifying noise/boundary artifacts.
 
 ## 17. Laplace-Domain Logarithmic Objective
 
