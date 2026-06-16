@@ -508,3 +508,20 @@ Next heartbeat:
 1. Since the four formula-checked core papers now have first-round manual-text-checked anchors, perform a compact final citation-anchor QA pass.
 2. Decide whether remaining heartbeat work should pause, continue manual visual page/equation verification, or wait for user confirmation before runnable config implementation.
 3. Continue avoiding `GPR_references/` PDF commits and any large training/inversion runs.
+
+## 2026-06-16 Heartbeat 21
+
+Status: completed citation-anchor QA for the formula-checked core papers.
+
+Completed:
+
+- Added `citation_anchor_qa.md` to summarize the current citation-anchor status.
+- Confirmed that Meles et al. 2012, Lavoue et al. 2014, Liu et al. 2022, and Meng et al. 2019 all have first-round `manual-text-checked` anchors.
+- Recorded that Busch et al. 2012, Sun et al. 2024, Ernst et al. 2007, and Hunziker et al. 2025 remain `needs-manual-page-check` method references.
+- Updated `README.md`, `final_qa.md`, and `review_checklist.md` so the citation-anchor boundary is visible from the workspace index and QA documents.
+
+Next heartbeat:
+
+1. The Part 1 theory/report package is ready for internal review.
+2. Further work should explicitly choose citation polishing mode or runnable implementation mode.
+3. Do not start runnable `minimal_eps_l2_gradient_check` implementation without user confirmation.

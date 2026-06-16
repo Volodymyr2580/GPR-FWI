@@ -41,6 +41,7 @@ Maxwell equations
 ## Remaining Work
 
 - Upgrade `citation_anchors.md` from keyword-located local PDF page indices to manually verified section/page/equation citations.
+- `citation_anchor_qa.md` confirms that the four formula-checked core papers now have first-round `manual-text-checked` anchors, but still need visual printed-page verification before formal citation.
 - Verify the derivative-order difference between the second-order electric-field derivation and the first-order/FDTD sensitivity expression in Meles et al. (2012).
 - Fill more DOI/URL/author metadata in `literature_matrix.md` for pending papers.
 - Convert the documented `minimal_eps_l2_gradient_check` sketch into an actual YAML config and minimal runner/test under `marmousi_paper/gpr-inversion/` only after the user confirms the task should move from theory/report writing into code implementation.
