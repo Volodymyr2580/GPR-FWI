@@ -71,3 +71,5 @@
 当前已对 Lavoue et al. (2014) 做了针对性 PDF 抽取文本检查，确认了 Section 2.1/2.2、objective (6)、quasi-Newton update (7)、adjoint gradient (8)、parameter scaling (12)、Hessian/scaling discussion (15)-(16)、Tikhonov regularization (17)-(20) 以及 scaling/regularization sweep 的页序号线索。正式引用时仍建议打开 PDF 视觉核对版面和印刷页码。
 
 当前已对 Liu et al. (2022) 做了针对性 PDF 抽取文本检查，确认了 Section 2.1、source-independent objectives (1)-(4)、envelope objective (5)、envelope definitions (6)-(7)、gradient derivation (8)-(12)、residual-source components (13)-(20)、merged backward residual sources / gradients (23)-(31)、simultaneous update and step calculation (32)-(42) 等线索。正式引用时仍建议打开 PDF 视觉核对版面和印刷页码。
+
+当前已对 Meng et al. (2019) 做了针对性 PDF 抽取文本检查，确认了 Laplace-domain Maxwell system (2)-(5)、Green operator (6)、logarithmic objective (7)、gradient/virtual-source derivation (8)-(12)、model update / conjugate-gradient directions (13)-(15)、stability/step factors around (17)、stepped update 和 damping-constant discussion 等线索。正式引用时仍建议打开 PDF 视觉核对版面和印刷页码。

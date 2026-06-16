@@ -660,6 +660,19 @@ Use for Part 1:
 - Provides a concrete Laplace-domain contrast to time-domain FWI.
 - Supports the idea that Laplace-domain inversion is primarily useful for smooth initial model building rather than replacing detailed time-domain FWI.
 
+Citation anchors:
+
+- Local PDF page 3: Section 2.2 writes time-domain Maxwell equations and the Laplace-domain Maxwell system around (2)-(5).
+- Local PDF page 3: Green operator \(\tilde{G}=\tilde{M}^{-1}\) is introduced around (6).
+- Local PDF page 3: Section 2.3 introduces the logarithmic objective around (7).
+- Local PDF page 4: Gradient derivation, virtual source relation, and model derivatives are given around (8)-(12).
+- Local PDF page 4: Model update and conjugate-gradient directions are introduced around (13)-(15).
+- Local PDF page 5: Stability/step factors and the handling of Laplace-domain residual back-propagation are discussed around (17).
+- Local PDF pages 5-6: Stepped permittivity-then-conductivity update and logarithmic-domain parameter update are described in the first synthetic experiment.
+- Local PDF pages 5-7: Damping constant tests and simple/complex synthetic setup details are discussed.
+- Local PDF pages 12-13: Discussion and conclusion emphasize the role of Laplace-domain inversion as an initial-model builder, together with damping/noise limitations.
+- These are local PDF page indices and equation-number anchors; formal reporting should still verify printed page numbers visually.
+
 ## Hunziker et al. 2025
 
 Status: skimmed from local PDF.

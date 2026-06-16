@@ -490,3 +490,21 @@ Next heartbeat:
 1. Upgrade Meng et al. (2019) anchors for Laplace-domain objective, residual scaling, virtual sources, and stepped update.
 2. Keep all anchors marked as local PDF page indices until visual printed-page verification is done.
 3. Continue treating runnable config implementation as a separate next-stage task requiring user confirmation.
+
+## 2026-06-16 Heartbeat 20
+
+Status: upgraded Meng et al. (2019) citation anchors.
+
+Completed:
+
+- Performed targeted local PDF text checks for Meng et al. (2019), focusing on the Laplace-domain Maxwell system, logarithmic objective, residual scaling, virtual sources, gradient structure, model update, stepped update, damping constants, and initial-model role.
+- Upgraded the Meng row in `citation_anchors.md` from keyword-located to manual-text-checked.
+- Added section/equation anchors for Maxwell/Laplace system (2)-(5), Green operator (6), logarithmic objective (7), gradient/virtual-source derivation (8)-(12), model update/conjugate-gradient directions (13)-(15), and stability/step discussion around (17).
+- Synchronized the same citation-anchor summary into both `core_paper_notes.md` and `GPR_FWI_core_paper_notes.md`.
+- Updated `source_status.md` and `review_checklist.md` to record the upgraded Meng anchor status.
+
+Next heartbeat:
+
+1. Since the four formula-checked core papers now have first-round manual-text-checked anchors, perform a compact final citation-anchor QA pass.
+2. Decide whether remaining heartbeat work should pause, continue manual visual page/equation verification, or wait for user confirmation before runnable config implementation.
+3. Continue avoiding `GPR_references/` PDF commits and any large training/inversion runs.
