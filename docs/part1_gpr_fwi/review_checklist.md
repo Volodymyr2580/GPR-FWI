@@ -11,7 +11,8 @@
 - [x] Time-domain workflow 已写成可执行闭环。
 - [x] Objective / regularization / illumination 已有方法地图。
 - [x] 本地实验线已映射到理论问题。
-- [ ] 每个关键文献结论补充更细引用位置，例如 section/page/equation。
+- [x] 为已 formula-checked 的关键文献补充轻量 PDF 页码锚点。
+- [ ] 将轻量 PDF 页码锚点升级为人工核对后的 section/page/equation 引用。
 - [x] 补充更多经典 time-domain crosshole GPR-FWI 文献。
 - [x] 补充 Laplace-domain 和 OT objective 的具体公式或实验结论。
 - [x] 把 currently English-heavy sections 统一成更适合中文汇报的语气。

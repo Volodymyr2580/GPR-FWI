@@ -35,6 +35,7 @@ Maxwell 方程
 - `Part1_to_experiment_recommendations.md`：理论到实验的路线建议。
 - `literature_matrix.md`：文献矩阵和阅读状态。
 - `source_status.md`：当前结论的来源状态和可信度标注。
+- `citation_anchors.md`：核心文献的 PDF 关键词页码和后续人工校对锚点。
 - `review_checklist.md`：下一轮校对和补充清单。
 
 兼容说明：

@@ -400,3 +400,20 @@ Next heartbeat:
 1. Do a compact consistency pass over `README.md`, `source_status.md`, and the final report references.
 2. If still useful, add page/equation anchors for the most important formula-checked papers.
 3. Keep runnable config creation as a separate implementation task after the theory/report artifacts stabilize.
+
+## 2026-06-16 Heartbeat 15
+
+Status: added lightweight citation anchors for formula-checked papers.
+
+Completed:
+
+- Used local PDF text extraction to locate keyword pages for Meles et al. 2012, Lavoue et al. 2014, Liu et al. 2022, and Meng et al. 2019.
+- Added `citation_anchors.md` with local PDF page indices for sensitivity/Jacobian/pseudo-Hessian, frequency-domain biparameter scaling/Tikhonov, source-independent envelope objective, and Laplace-domain logarithmic objective.
+- Updated `README.md` to list the citation-anchor file.
+- Updated `source_status.md` to clarify that these anchors are internal review aids, not final publication-ready page/equation citations.
+
+Next heartbeat:
+
+1. Do one final consistency read of the main report, formula summary, core notes, and experiment recommendations.
+2. Decide whether the theory/report heartbeat should pause after final QA or move into runnable config implementation.
+3. Leave any unverified page/equation numbers as pending rather than inventing exact references.

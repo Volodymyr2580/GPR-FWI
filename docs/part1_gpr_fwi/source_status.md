@@ -61,3 +61,7 @@
 - 对 `PDF-skimmed` 内容，可以写“某文献摘要和方法概览显示”，并保留进一步核查空间。
 - 对 `local-doc-checked` 内容，只能写“本地实验记录/项目文档显示”，不能当作外部文献结论。
 - 对 `inference` 内容，写“这提示我们/因此建议/需要通过实验验证”。
+
+## Citation Anchor Rule
+
+`citation_anchors.md` 记录的是本地 PDF 文本抽取得到的页序号和关键词命中范围。它适合用来快速回到 PDF 复核公式和方法段落，但还不是最终论文级 page/equation citation。正式引用前仍需人工检查 PDF 版面、印刷页码和公式编号。
