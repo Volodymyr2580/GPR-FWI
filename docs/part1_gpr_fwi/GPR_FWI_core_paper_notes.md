@@ -327,6 +327,17 @@ Important distinction:
 - Parameter scaling guides the inversion path according to relative data sensitivity.
 - Regularization constrains the conductivity model and suppresses high-wavenumber structures that can compensate for incorrect low-wavenumber conductivity.
 
+Citation anchors:
+
+- Local PDF page 3: Section 2.1 introduces the frequency-domain forward problem; Section 2.2 introduces the inverse problem, objective (6), quasi-Newton update (7), adjoint gradient (8), and L-BFGS-B setup.
+- Local PDF pages 5-7: Section 3.1 discusses parameter sensitivity and trade-off; eq. (11) is used in the trade-off discussion.
+- Local PDF page 7: Section 3.2 introduces parameter scaling \((\epsilon_r,\sigma_r/\beta)\) and the model/gradient vector around (12).
+- Local PDF page 8: Hessian/scaling structure is discussed around (15)-(16), including the role of \(\beta\) in Hessian blocks.
+- Local PDF page 9: Conductivity Tikhonov regularization and the regularization-gradient contribution are discussed around (17)-(20).
+- Local PDF pages 15-16: Scaling/regularization sweep is used to identify reasonable \(\beta\) and \(\lambda\) ranges.
+- Local PDF pages 18-19: Discussion and conclusion emphasize that robust biparameter reconstruction requires both parameter scaling and regularization.
+- These are local PDF page indices and equation-number anchors; formal reporting should still verify printed page numbers visually.
+
 ## Sun et al. 2024
 
 Status: skimmed from local PDF.

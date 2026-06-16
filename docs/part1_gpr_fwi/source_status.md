@@ -67,3 +67,5 @@
 `citation_anchors.md` 记录的是本地 PDF 文本抽取得到的页序号和关键词命中范围。它适合用来快速回到 PDF 复核公式和方法段落，但还不是最终论文级 page/equation citation。正式引用前仍需人工检查 PDF 版面、印刷页码和公式编号。
 
 当前已对 Meles et al. (2012) 做了针对性 PDF 抽取文本检查，确认了 Section IV-A、cost function (12)、Jacobian definition (13)、pseudo-Hessian/Taylor expansion (15)、Gauss-Newton update (20)、Appendix A (A-1)-(A-6) 等线索。正式引用时仍建议打开 PDF 视觉核对版面和印刷页码。
+
+当前已对 Lavoue et al. (2014) 做了针对性 PDF 抽取文本检查，确认了 Section 2.1/2.2、objective (6)、quasi-Newton update (7)、adjoint gradient (8)、parameter scaling (12)、Hessian/scaling discussion (15)-(16)、Tikhonov regularization (17)-(20) 以及 scaling/regularization sweep 的页序号线索。正式引用时仍建议打开 PDF 视觉核对版面和印刷页码。

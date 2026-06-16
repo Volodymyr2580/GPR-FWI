@@ -454,3 +454,21 @@ Next heartbeat:
 1. Upgrade one more formula-checked paper, preferably Lavoue et al. (2014), with section/equation anchors for frequency-domain equation, adjoint gradient, scaling, and Tikhonov regularization.
 2. Keep all anchors clearly marked as local PDF page indices until visual page/equation verification is done.
 3. Do not start runnable config implementation without explicit user confirmation.
+
+## 2026-06-16 Heartbeat 18
+
+Status: upgraded Lavoue et al. (2014) citation anchors.
+
+Completed:
+
+- Performed targeted local PDF text checks for Lavoue et al. (2014), focusing on the frequency-domain forward problem, inverse problem, objective, adjoint gradient, parameter scaling, Hessian/scaling structure, and Tikhonov regularization.
+- Upgraded the Lavoue row in `citation_anchors.md` from keyword-located to manual-text-checked.
+- Added section/equation anchors for Section 2.1/2.2, objective (6), quasi-Newton update (7), adjoint gradient (8), trade-off discussion around eq. (11), parameter scaling/model-gradient vector (12), Hessian/scaling structure (15)-(16), and conductivity Tikhonov regularization (17)-(20).
+- Synchronized the same citation-anchor summary into both `core_paper_notes.md` and `GPR_FWI_core_paper_notes.md`.
+- Updated `source_status.md` and `review_checklist.md` to record the upgraded Lavoue anchor status.
+
+Next heartbeat:
+
+1. Upgrade Liu et al. (2022) or Meng et al. (2019) anchors next, depending on whether source-independent envelope or Laplace-domain initialization is more urgent.
+2. Keep all anchors marked as local PDF page indices until visual printed-page verification is done.
+3. Continue treating runnable config implementation as a separate next-stage task requiring user confirmation.
