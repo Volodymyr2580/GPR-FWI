@@ -516,6 +516,18 @@ Use for Part 1:
 
 - This paper is useful for explaining how objective-function design changes the adjoint source. The physical forward/adjoint propagation is still wave-equation based, but the residual injected backward is no longer a simple waveform residual.
 
+Citation anchors:
+
+- Local PDF pages 3-4: Section 2.1 derives the conventional time-domain objective and source-independent objectives (1)-(4).
+- Local PDF page 4: Envelope objective (5), envelope definitions (6)-(7), and Hilbert transform \(H\) are introduced.
+- Local PDF pages 4-5: Gradient derivation starts around (8)-(12).
+- Local PDF page 5: Residual-source components and cross-correlation terms are introduced around (13)-(20).
+- Local PDF page 6: Permittivity/conductivity gradient expressions and merged backward residual sources are discussed around (23)-(31).
+- Local PDF page 7: Simultaneous permittivity/conductivity update and step calculation are given around (32)-(42).
+- Local PDF pages 10-11: Envelope/multiscale motivation is discussed through convolutional spectrum and source-independent wavelet strategy.
+- Local PDF page 20: Conclusions discuss convolution/envelope nonlinearity, residual-field frequency control, and improved stability.
+- These are local PDF page indices and equation-number anchors; formal reporting should still verify printed page numbers visually.
+
 ## Ernst et al. 2007
 
 Status: skimmed from local PDF.

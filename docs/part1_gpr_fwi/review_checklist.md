@@ -15,6 +15,7 @@
 - [ ] 将轻量 PDF 页码锚点升级为人工核对后的 section/page/equation 引用。
 - [x] 对 Meles et al. (2012) 做第一轮 section/equation 线索升级。
 - [x] 对 Lavoue et al. (2014) 做第一轮 section/equation 线索升级。
+- [x] 对 Liu et al. (2022) 做第一轮 section/equation 线索升级。
 - [x] 补充更多经典 time-domain crosshole GPR-FWI 文献。
 - [x] 补充 Laplace-domain 和 OT objective 的具体公式或实验结论。
 - [x] 把 currently English-heavy sections 统一成更适合中文汇报的语气。

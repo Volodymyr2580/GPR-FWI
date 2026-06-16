@@ -472,3 +472,21 @@ Next heartbeat:
 1. Upgrade Liu et al. (2022) or Meng et al. (2019) anchors next, depending on whether source-independent envelope or Laplace-domain initialization is more urgent.
 2. Keep all anchors marked as local PDF page indices until visual printed-page verification is done.
 3. Continue treating runnable config implementation as a separate next-stage task requiring user confirmation.
+
+## 2026-06-16 Heartbeat 19
+
+Status: upgraded Liu et al. (2022) citation anchors.
+
+Completed:
+
+- Performed targeted local PDF text checks for Liu et al. (2022), focusing on the source-independent objective, envelope objective, Hilbert-transform envelope definitions, gradient derivation, backward residual sources, and simultaneous \(\epsilon/\sigma\) update.
+- Upgraded the Liu row in `citation_anchors.md` from keyword-located to manual-text-checked.
+- Added section/equation anchors for Section 2.1, objectives (1)-(5), envelope definitions (6)-(7), gradient derivation (8)-(12), residual-source components (13)-(20), merged backward residual sources / gradient formulas (23)-(31), and update / step calculation (32)-(42).
+- Synchronized the same citation-anchor summary into both `core_paper_notes.md` and `GPR_FWI_core_paper_notes.md`.
+- Updated `source_status.md` and `review_checklist.md` to record the upgraded Liu anchor status.
+
+Next heartbeat:
+
+1. Upgrade Meng et al. (2019) anchors for Laplace-domain objective, residual scaling, virtual sources, and stepped update.
+2. Keep all anchors marked as local PDF page indices until visual printed-page verification is done.
+3. Continue treating runnable config implementation as a separate next-stage task requiring user confirmation.
