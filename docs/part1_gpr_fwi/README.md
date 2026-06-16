@@ -34,6 +34,8 @@ Maxwell 方程
 - `GPR_FWI_core_paper_notes.md`：按原任务命名的核心文献笔记。
 - `Part1_to_experiment_recommendations.md`：理论到实验的路线建议。
 - `literature_matrix.md`：文献矩阵和阅读状态。
+- `source_status.md`：当前结论的来源状态和可信度标注。
+- `review_checklist.md`：下一轮校对和补充清单。
 
 兼容说明：
 

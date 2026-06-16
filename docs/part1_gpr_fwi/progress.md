@@ -247,3 +247,29 @@ Open questions:
 - The literature matrix is useful but not yet a full expanded web literature database.
 - Only five core PDFs have been skimmed at formula/detail level.
 - A future pass should broaden coverage before treating this as a final polished literature review.
+
+## 2026-06-16 Heartbeat 8
+
+Status: added source-status and review-control documents.
+
+Completed:
+
+- Added `source_status.md` to distinguish:
+  - `PDF-formula-checked`
+  - `PDF-skimmed`
+  - `local-doc-checked`
+  - `inference`
+  - `pending`
+- Added `review_checklist.md` for main report, formula summary, literature matrix, experiment recommendations, and Git/data safety.
+- Updated `README.md` to list the new quality-control files.
+
+Next heartbeat:
+
+1. Either broaden literature coverage with one or two important pending PDFs.
+2. Or stage/commit the source-status pass if stable.
+3. Then decide whether the heartbeat should keep running or pause after the next literature-expansion step.
+
+Open questions:
+
+- Whether to prioritize more PDF reading or start turning the draft into a polished Chinese report.
+- Whether the next concrete experiment should be a gradient check config in the clean `marmousi_paper/gpr-inversion/` target or the older `Gpr_fwi/` baseline.
