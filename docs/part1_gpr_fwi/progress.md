@@ -417,3 +417,22 @@ Next heartbeat:
 1. Do one final consistency read of the main report, formula summary, core notes, and experiment recommendations.
 2. Decide whether the theory/report heartbeat should pause after final QA or move into runnable config implementation.
 3. Leave any unverified page/equation numbers as pending rather than inventing exact references.
+
+## 2026-06-16 Heartbeat 16
+
+Status: completed a final consistency QA pass for the Part 1 documentation artifacts.
+
+Completed:
+
+- Checked that all expected delivery files exist in `docs/part1_gpr_fwi/`.
+- Verified that `formula_summary.md` and `GPR_FWI_formula_summary.md` have no detected text differences.
+- Verified that `core_paper_notes.md` and `GPR_FWI_core_paper_notes.md` have no detected text differences.
+- Checked that the main report has a complete section structure and no `To be expanded` placeholder.
+- Confirmed that remaining `metadata_pending` entries are intentionally confined to the literature matrix.
+- Added `final_qa.md` to record current readiness, remaining work, and the boundary between theory/report writing and runnable config implementation.
+
+Next heartbeat:
+
+1. If the heartbeat continues, either perform manual citation-anchor upgrades or start the runnable `minimal_eps_l2_gradient_check` config implementation after user confirmation.
+2. Keep the theory/report artifacts stable unless a specific correction is found.
+3. Continue avoiding `GPR_references/` PDF commits and any large training/inversion runs.

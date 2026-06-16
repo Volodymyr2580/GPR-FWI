@@ -36,6 +36,7 @@ Maxwell 方程
 - `literature_matrix.md`：文献矩阵和阅读状态。
 - `source_status.md`：当前结论的来源状态和可信度标注。
 - `citation_anchors.md`：核心文献的 PDF 关键词页码和后续人工校对锚点。
+- `final_qa.md`：当前第一部分文档交付物的一致性检查记录。
 - `review_checklist.md`：下一轮校对和补充清单。
 
 兼容说明：
