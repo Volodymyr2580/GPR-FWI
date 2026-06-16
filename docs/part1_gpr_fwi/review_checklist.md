@@ -18,7 +18,7 @@
 - [x] 添加中文执行摘要、证据边界和术语说明。
 - [x] 润色 Sections 1-4，使研究问题、正演模型、目标函数和伴随梯度形成连续叙述。
 - [x] 继续润色 Sections 5-8，使单/双参数、crosstalk、time-domain workflow 和方法地图达到同一汇报语气。
-- [ ] 润色 Section 9，使典型实验模型和本地实验线映射更像可执行路线图。
+- [x] 润色 Section 9，使典型实验模型和本地实验线映射更像可执行路线图。
 
 ## Formula Summary
 
@@ -53,8 +53,9 @@
 - [x] Objective function 对比实验。
 - [x] Regularization 实验。
 - [x] Network / implicit representation 对比实验。
-- [ ] 指定最适合落地的本地代码路径。
-- [ ] 给出第一个 gradient check 的具体 config 草案。
+- [x] 指定最适合落地的本地代码路径。
+- [x] 给出第一个 gradient check 的具体 config 草案。
+- [ ] 将 config 草案转化为实际 `marmousi_paper/gpr-inversion/configs/` YAML 文件和最小 runner/test。
 
 ## Git / Data Safety
 

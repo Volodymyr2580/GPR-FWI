@@ -363,3 +363,22 @@ Next heartbeat:
 1. Polish Section 9 and the local-experiment mapping so the theory-to-experiment bridge reads like a clear roadmap.
 2. Add a concrete first gradient-check config sketch to `Part1_to_experiment_recommendations.md`.
 3. Consider one final consistency pass to keep `formula_summary.md` and `GPR_FWI_formula_summary.md` aligned with the main report wording.
+
+## 2026-06-16 Heartbeat 13
+
+Status: strengthened the theory-to-experiment bridge.
+
+Completed:
+
+- Polished Section 9 of `Part1_GPR_FWI_theory_and_methods.md` to distinguish old experiment lines as evidence sources from `marmousi_paper/gpr-inversion/` as the cleaner future landing path.
+- Added a two-layer experiment roadmap:
+  - minimal verification layer for forward/adjoint/gradient closure;
+  - method-comparison layer for \(\sigma\), biparameter scaling, regularization, illumination, objectives, and network/implicit parameterizations.
+- Added a concrete `minimal_eps_l2_gradient_check` YAML-style config sketch to `Part1_to_experiment_recommendations.md`.
+- Added explicit gradient-check diagnostics: residual sign, adjoint source time order, PML mask, \(\epsilon\)-to-\(\epsilon_r\) chain rule, and staggered-grid alignment.
+
+Next heartbeat:
+
+1. Sync `formula_summary.md` and `GPR_FWI_formula_summary.md` with the new diagnostic wording from the main report and experiment recommendations.
+2. Add short “implementation cautions” near the formula summary sections for single-parameter and biparameter experiments.
+3. Then do a small consistency pass across `README.md`, `progress.md`, and `review_checklist.md`.

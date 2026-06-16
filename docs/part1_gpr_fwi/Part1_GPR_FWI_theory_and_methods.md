@@ -552,7 +552,7 @@ On-ground 或 surface-to-surface GPR 更接近很多工程场景，但反演更�
 
 复杂 benchmark，例如 Marmousi 或 Overthrust 类模型，可以测试算法在强横向变化、多尺度结构和复杂照明下的表现。但它们不适合一开始就用来判断梯度公式是否正确，因为失败原因太多：初始模型、频率、步长、PML、正则化、优化器和照明都可能混在一起。
 
-结合当前本地项目，已有实验线可以映射到下面几个理论问题。
+结合当前本地项目，已有实验线可以映射到下面几个理论问题。这里的重点不是马上复用所有旧代码，而是把每条实验线当成一个理论问题的证据来源：有的用于确认基本 FWI 闭环，有的用于研究正则化，有的用于研究网络重参数化，有的用于后续迁移成统一配置。
 
 | Local line | Role | Theory link |
 | --- | --- | --- |
@@ -565,7 +565,12 @@ On-ground 或 surface-to-surface GPR 更接近很多工程场景，但反演更�
 | `隐式FWI/` | IFWI/dropout-IFWI 复现 | implicit representation、frequency principle、dropout 正则化、illumination diagnosis |
 | `marmousi_paper/gpr-inversion/` | clean migration target | 配置化实验矩阵、Marmousi/Overthrust、eps-only/sig-only/twopara/eps-then-sig |
 
-这些本地实验给出一个很自然的后续路线：不要直接跳到最复杂的 IFWI 或 Marmousi，而是先构造最小可验证链条，再逐步打开复杂度。
+这些本地实验给出一个很自然的后续路线：不要直接跳到最复杂的 IFWI 或 Marmousi，而是先构造最小可验证链条，再逐步打开复杂度。更具体地说，`Gpr_fwi/ReadMe.md` 里提出的“回归最基本 FWI 流程”非常适合作为第一性原理实验的需求说明；而 `marmousi_paper/gpr-inversion/` 已经有 `configs/`、`src/`、`tests/` 和实验矩阵文档，更适合作为后续落地的统一实验工程。
+
+因此，建议把后续代码实验分成两层：
+
+1. 最小验证层：只做小网格、少炮、单参数 \(\epsilon_r\)、L2 目标函数和有限差分梯度检查。它回答“公式和代码是否闭合”。
+2. 方法对比层：在干净配置框架中逐步加入 \(\sigma\)、双参数 scaling、Tikhonov/TV、illumination compensation、不同 objective 和网络/隐式重参数化。它回答“哪种方法在什么病态条件下有效”。
 
 推荐实验阶梯是：
 

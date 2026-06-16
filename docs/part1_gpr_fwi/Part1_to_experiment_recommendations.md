@@ -42,6 +42,100 @@ Expected:
 - \(\epsilon_r\) 异常位置应有可解释更新。
 - 如果 gradient check 不通过，先不要进入复杂实验。
 
+Recommended local landing path:
+
+- 首选：`marmousi_paper/gpr-inversion/`。理由是该目录已经有 `configs/`、`src/`、`tests/` 和安全输出目录设计，适合把实验做成可恢复、可对比的配置化任务。
+- 参考：`Gpr_fwi/ReadMe.md`。理由是它已经清楚写出了最小 FWI 流程需求：输入网格、源函数、真实模型、初始模型、计算 `d_obs`、再从初始模型迭代更新。
+- 暂不建议直接从复杂 UNet/IFWI 线路开始，因为那会把梯度、优化器、网络先验、数据几何和正则化全部混在一起。
+
+First config sketch: `minimal_eps_l2_gradient_check`
+
+这份配置的目的不是追求最终图像好看，而是验证三件事：正演数据维度正确、伴随梯度方向正确、一次或少量迭代能让 L2 loss 沿下降方向变化。
+
+```yaml
+experiment:
+  name: minimal_eps_l2_gradient_check
+  purpose: verify_forward_adjoint_gradient_before_large_inversion
+  output_policy: create_unique_run_directory
+
+domain:
+  dimension: 2
+  nx: 80
+  nz: 120
+  dx: 0.02
+  dz: 0.02
+  nt: 800
+  dt: 4.0e-11
+  npml: 10
+  air_layer: false
+
+source:
+  type: ricker
+  center_frequency_hz: 4.0e8
+  source_count: 3
+  source_depth_index: 12
+  source_x_indices: [20, 40, 60]
+
+receivers:
+  mode: common_receiver_array
+  receiver_depth_index: 12
+  receiver_x_indices: [10, 20, 30, 40, 50, 60, 70]
+  component: Ez
+
+true_model:
+  epsilon_r_background: 4.0
+  sigma_background_s_per_m: 0.003
+  epsilon_r_anomaly:
+    shape: circle
+    center_index: [40, 60]
+    radius_cells: 10
+    value: 6.0
+  sigma_anomaly: none
+
+initial_model:
+  epsilon_r: homogeneous_background
+  epsilon_r_value: 4.0
+  sigma: fixed_background
+  sigma_value_s_per_m: 0.003
+
+inversion:
+  parameters: [epsilon_r]
+  objective: l2_waveform
+  optimizer: steepest_descent_or_lbfgs
+  max_iterations: 3
+  pml_gradient_mask: true
+  gradient_smoothing: none
+  illumination_compensation: none
+
+gradient_check:
+  enabled: true
+  parameter: epsilon_r
+  perturbation_type: random_roi
+  roi_exclude_pml: true
+  step_sizes: [1.0e-2, 3.0e-3, 1.0e-3]
+  comparison:
+    finite_difference: central
+    tolerance_relative: 1.0e-2
+
+diagnostics:
+  save_loss_curve: true
+  save_observed_data: true
+  save_synthetic_data: true
+  save_initial_model: true
+  save_gradient_snapshot: true
+  save_update_snapshot: true
+```
+
+最关键的检查公式是：
+
+\[
+\frac{\Phi(m+h\delta m)-\Phi(m-h\delta m)}{2h}
+\approx
+\langle \nabla\Phi(m), \delta m\rangle.
+\]
+
+如果多个 \(h\) 下两边数量级和符号都不一致，应先检查 residual 符号、伴随源注入时间顺序、PML mask、\(\epsilon\) 与 \(\epsilon_r\) 的链式法则，以及 staggered grid 上梯度和参数是否位于同一网格位置。
+
 ## 2. Crosstalk 诊断实验
 
 Purpose:
