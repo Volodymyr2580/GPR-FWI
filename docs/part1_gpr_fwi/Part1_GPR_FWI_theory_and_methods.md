@@ -250,11 +250,9 @@ Meles et al. (2012) 给出了一个更贴近 FDTD sensitivity 实现的视角：
 
 ## 5. 单参数反演：先把问题降到可理解
 
-单参数 GPR-FWI 通常只反演 \(\epsilon_r\) 或等价的 velocity。这样做的好处是问题更稳定，因为数据残差只被允许通过一个参数来解释。
+单参数反演是理解 GPR-FWI 的第一层台阶。它通常只更新 \(\epsilon_r\)，或更新与 \(\epsilon_r\) 等价的速度参数。这样做的好处是问题更可诊断：数据残差只能通过一个参数通道来解释，错误来源更容易定位。
 
-如果只反演 \(\epsilon_r\)，物理直觉是：
-
-- \(\epsilon_r\) 控制电磁波速度：
+如果只反演 \(\epsilon_r\)，核心物理直觉非常清楚：
 
 \[
 v=\frac{1}{\sqrt{\mu\epsilon}}
@@ -263,23 +261,24 @@ v=\frac{1}{\sqrt{\mu\epsilon}}
 \quad(\mu_r\approx 1).
 \]
 
-- \(\epsilon_r\) 的错误会主要表现为走时、相位和波形对齐错误。
-- 初始 \(\epsilon_r\) 如果太差，L2 waveform objective 很容易 cycle skipping。
+也就是说，\(\epsilon_r\) 越大，电磁波速度越低，走时越长。于是 \(\epsilon_r\) 的错误主要表现为走时错误、相位错位和反射界面位置偏移。对 L2 waveform objective 而言，这类相位错误一旦超过半个周期，就可能触发 cycle skipping。
 
-因此，单参数反演适合做第一性原理验证：
+因此，单参数 \(\epsilon_r\) 反演最适合作为第一性原理验证实验：
 
-1. 先固定 \(\sigma\)，只让 \(\epsilon_r\) 更新。
-2. 检查 adjoint gradient 是否与 finite-difference gradient check 一致。
-3. 观察目标函数是否下降、波形是否逐步对齐。
-4. 再逐步引入正则化、照明补偿和更复杂目标函数。
+1. 固定 \(\sigma\)，只让 \(\epsilon_r\) 更新。
+2. 用有限差分梯度检查确认 adjoint gradient 的方向和尺度。
+3. 观察目标函数是否下降、合成波形是否逐步对齐观测波形。
+4. 再逐步加入平滑、照明补偿、更复杂目标函数和更复杂模型。
 
-如果只反演 \(\sigma\)，问题通常更难。原因是 conductivity 对 GPR 数据的影响主要表现为振幅衰减，而振幅也会受到 source wavelet、天线耦合、几何扩散、噪声和边界吸收的影响。因此 \(\sigma\) 反演很容易把非介质因素误解释为 conductivity 结构。
+如果只反演 \(\sigma\)，问题通常更困难。原因是 \(\sigma\) 对数据的主要影响是振幅衰减和波形拖尾，而振幅还会受到 source wavelet、天线耦合、几何扩散、噪声和边界吸收影响。因此，\(\sigma\) 反演更容易把非介质因素误解释为电导率结构。
 
-所以，从实验设计角度看，推荐顺序是：
+从实验设计角度看，更稳妥的顺序是：
 
-1. 单参数 \(\epsilon_r\) 反演。
-2. 固定真值或可信 \(\epsilon_r\) 后反演 \(\sigma\)，测试 \(\sigma\) 灵敏度。
-3. 最后进入 \((\epsilon_r,\sigma)\) 双参数反演。
+1. 先做单参数 \(\epsilon_r\) 反演，验证相位/走时通道。
+2. 再固定真值或可信的 \(\epsilon_r\)，只反演 \(\sigma\)，测试振幅/衰减通道。
+3. 最后进入 \((\epsilon_r,\sigma)\) 双参数同步反演。
+
+这个顺序不是为了回避复杂性，而是为了让每一步失败时都有明确解释。若单参数梯度都无法通过检查，直接进入双参数或神经网络重参数化只会把错误藏得更深。
 
 ## 6. 双参数反演与 Crosstalk
 
@@ -289,7 +288,7 @@ v=\frac{1}{\sqrt{\mu\epsilon}}
 \mathbf{m}=(\epsilon_r,\sigma).
 \]
 
-理想情况下，\(\epsilon_r\) 解释相位和速度，\(\sigma\) 解释衰减和振幅。但真实反演里二者并不会干净分工。线性化后有：
+理想情况下，\(\epsilon_r\) 解释速度和相位，\(\sigma\) 解释衰减和振幅。但真实数据中二者不会干净分工。在线性化意义下，数据扰动可以写成：
 
 \[
 \delta\mathbf{d}
@@ -299,7 +298,7 @@ J_{\epsilon_r}\delta\epsilon_r
 J_\sigma\delta\sigma.
 \]
 
-如果 \(J_{\epsilon_r}\) 和 \(J_\sigma\) 的作用方向不够独立，同一个数据残差既可以被 \(\delta\epsilon_r\) 解释，也可以被 \(\delta\sigma\) 解释，就会发生 crosstalk。
+如果 \(J_{\epsilon_r}\) 和 \(J_\sigma\) 的作用方向不够独立，同一个数据残差既可以被 \(\delta\epsilon_r\) 解释，也可以被 \(\delta\sigma\) 解释，crosstalk 就会出现。它不是某个优化器的小毛病，而是多参数反演的结构性病态。
 
 用 Gauss-Newton 的块 Hessian 看得更清楚：
 
@@ -315,27 +314,27 @@ J_\sigma^T J_\sigma
 \end{bmatrix}.
 \]
 
-对角块描述每个参数自己的可分辨性，非对角块描述两个参数之间的耦合。非对角块越强，双参数 trade-off 越严重。
+对角块描述每个参数自己的可分辨性，非对角块描述两个参数之间的耦合。非对角块越强，\(\epsilon_r\) 和 \(\sigma\) 的 trade-off 越严重。此时，data misfit 下降并不等价于两个参数都恢复正确。
 
 Lavoue et al. (2014) 给出了一个很有启发性的频域双参数例子。他们在 2D frequency-domain GPR-FWI 中同时反演 permittivity 和 conductivity，并指出：
 
 - GPR 数据通常对 permittivity 更敏感。
 - conductivity 也会影响振幅和相位，因此不能简单忽略。
 - 先反演 permittivity、再反演 conductivity 的 cascaded strategy 可能失败，因为第一步中的 permittivity 误差会系统性映射成 conductivity artifacts。
-- 同时反演通常更合理，但必须处理参数尺度、灵敏度和正则化。
+- 同时反演通常更合理，但必须处理参数尺度、灵敏度差异和正则化。
 
-他们引入参数缩放：
+他们使用参数缩放来调节两个参数的相对更新尺度：
 
 \[
 (\epsilon_r,\sigma_r/\beta),
 \]
 
-其中 \(\beta\) 控制 conductivity 相对于 permittivity 的更新权重。直观理解：
+其中 \(\beta\) 控制 conductivity 相对于 permittivity 的更新权重。直观理解是：
 
 - \(\beta<1\)：压低 conductivity 更新，让反演先更依赖 permittivity。
 - \(\beta>1\)：放大 conductivity 更新，但容易引入 conductivity 振荡和伪影。
 
-这对我们后续实验非常重要：双参数反演不能只看最终 data misfit，因为不同 \(\beta\) 可能得到相近的 misfit，却给出完全不同的 conductivity 模型。也就是说，数据拟合好不等于参数恢复可信。
+这对后续实验非常重要：双参数反演不能只看最终 data misfit。不同 \(\beta\) 可能得到相近的数据拟合，却给出完全不同的 conductivity 模型。换句话说，数据拟合好不等于参数恢复可信。
 
 Lavoue et al. 还加入 conductivity 的 Tikhonov regularization：
 
@@ -361,11 +360,11 @@ C_M(\mathbf{m})
 - Parameter scaling 改变参数空间的相对权重，主要是引导反演路径。
 - Regularization 改变目标函数，主要是约束模型结构。
 
-在双参数 GPR-FWI 中，两者经常需要同时存在。只靠 L-BFGS-B 这种 quasi-Newton 方法并不一定能自动解决参数尺度和 crosstalk 问题，因为近似 Hessian 未必足够准确地平衡不同参数类型。
+在双参数 GPR-FWI 中，两者经常需要同时存在。只靠 L-BFGS-B 这样的 quasi-Newton 方法并不一定能自动解决参数尺度和 crosstalk，因为近似 Hessian 未必足够准确地平衡不同参数类型。更可靠的做法是把双参数实验拆成一组诊断：分别检查单参数灵敏度、参数缩放、正则化强度、照明补偿，以及错误初始模型下的误差转移方向。
 
 ## 7. Time-Domain GPR-FWI 技术路线
 
-时域 GPR-FWI 的优势是物理过程直观：发射一个时域 source wavelet，FDTD 正向推进 Maxwell 方程，接收器记录完整 radargram，然后用残差反向传播得到梯度。它非常适合解释“梯度为什么是 forward wavefield 和 adjoint wavefield 的相关”。
+时域 GPR-FWI 的优势是物理过程直观：给定一个时域 source wavelet，用 FDTD 正向推进 Maxwell 方程，接收器记录完整 radargram，再把数据残差作为伴随源反向传播。它非常适合解释“为什么梯度是 forward wavefield 和 adjoint wavefield 的相关”。
 
 一个标准 time-domain adjoint FWI 闭环可以写成：
 
@@ -391,11 +390,11 @@ C_M(\mathbf{m})
 
 这里的关键不是“反向传播”这个词本身，而是 adjoint wavefield 的物理含义：它是由接收端残差激发出来、沿时间反向传播的误差信号。正演波场告诉我们某个位置是否被 source 照亮，伴随波场告诉我们该位置是否能解释接收端残差。两者相乘并在时间上累加，就得到该位置对目标函数的贡献。
 
-在时域实现中，需要特别注意几个技术细节。
+在时域实现中，以下细节会直接决定公式能不能落到代码里。
 
-第一，forward wavefield 的保存。梯度需要 forward wavefield 和 adjoint wavefield 在同一时间对应，所以直接做法是保存全部正演波场。但这会消耗大量内存。常见替代方案包括 checkpointing、边正演边存关键时间片、重新正演恢复波场等。
+第一，forward wavefield 的保存。梯度需要 forward wavefield 和 adjoint wavefield 在同一时间对应，所以最直接的做法是保存全部正演波场。但这会消耗大量内存。常见替代方案包括 checkpointing、只保存关键时间片、或在伴随传播阶段重新正演恢复波场。
 
-第二，Yee grid 或 staggered grid 的变量位置。电场、磁场、\(\epsilon\)、\(\sigma\) 可能不在完全相同的网格位置。梯度累加时必须确认参数更新位置和场量插值方式，否则会出现数值上的错位。
+第二，Yee grid 或 staggered grid 的变量位置。电场、磁场、\(\epsilon\)、\(\sigma\) 可能不在完全相同的网格位置。梯度累加时必须确认参数更新位置和场量插值方式，否则会出现数值错位：公式看起来正确，更新却落在错误位置。
 
 第三，PML 区域。PML 是为了吸收边界反射而引入的人工区域。通常不希望反演 PML 参数，也不希望 PML 内的强数值效应污染物理模型，所以梯度常需要在 PML 区域置零或施加 mask。
 
@@ -410,13 +409,15 @@ C_M(\mathbf{m})
 
 如果 source 很多，可以使用 mini-batch 或 stochastic source encoding，但这会引入梯度噪声，需要更谨慎的步长和收敛判断。
 
-第五，步长和尺度。GPR 中 \(\epsilon_r\) 和 \(\sigma\) 量纲差异极大，且 \(\sigma\) 梯度常比 \(\epsilon_r\) 更不稳定。双参数更新时必须考虑 parameter scaling，否则优化器可能把残差错误地压到 conductivity 上。
+第五，步长和尺度。GPR 中 \(\epsilon_r\) 和 \(\sigma\) 的量纲差异很大，且 \(\sigma\) 梯度常比 \(\epsilon_r\) 更不稳定。双参数更新时必须考虑 parameter scaling，否则优化器可能把残差错误地压到 conductivity 上。
+
+第六，梯度验证。每次改变方程形式、源项定义、残差符号、参数化方式或网格插值方式后，都应重新做 finite-difference gradient check。对初学者来说，这一步很像给推导和代码之间搭一座桥：它不证明反演一定成功，但能排除“方向写反了、尺度差太多、参数位置错了”这类最致命错误。
 
 ## 8. 目标函数、正则化和照明补偿
 
 ### 8.1 目标函数
 
-最基本的目标函数是 L2 waveform misfit：
+目标函数决定“什么样的数据差异被认为重要”。最基本的选择是 L2 waveform misfit：
 
 \[
 \Phi_{L2}(\mathbf{m})
@@ -426,7 +427,7 @@ C_M(\mathbf{m})
 \|\mathbf{P}\mathbf{u}_s(\mathbf{m})-\mathbf{d}^{obs}_s\|_2^2.
 \]
 
-它的优点是简单、梯度推导清楚、和 adjoint-state method 配合自然。缺点也很明显：当合成波形和观测波形相差超过半个周期时，L2 objective 会把错误相位当成正确下降方向，形成 cycle skipping。
+它的优点是简单、梯度推导清楚、和 adjoint-state method 配合自然。缺点也很明显：当合成波形和观测波形相差超过半个周期时，L2 objective 可能把错误相位当成正确下降方向，形成 cycle skipping。
 
 Normalized 或 correlation-based objective 的目标是降低 source amplitude、receiver gain 或几何扩散对振幅的影响。它们通常更关注波形形状或相对相似度，而不是绝对振幅。这对 GPR 很有意义，因为 GPR 的振幅除了介质参数之外，还受天线耦合、源波形、近场效应和仪器响应影响。
 
@@ -447,6 +448,8 @@ Laplace-domain objective 会强调信号早期和低频/平滑成分，常用于
 Meng et al. (2019) 给出了一个直接面向 cross-hole radar 的例子：在 Laplace 域中使用 logarithmic objective 反演 \(\epsilon\) 和 \(\sigma\)，主要目的不是替代 time-domain FWI，而是为 time-domain FWI 提供比 ray-based inversion 更平滑、更合适的初始模型。
 
 Optimal-transport objective 是另一个处理 cycle skipping 的方向。Hunziker et al. (2025) 在 crosshole GPR-FWI 中采用先 OT 后 LS 的策略：早期用 OT 的宽吸引域靠近正确模型，后期切换到 LS 以获得更明确的局部收敛。这种策略提醒我们，目标函数可以按反演阶段切换，而不是从头到尾固定一个 misfit。
+
+因此，目标函数可以按用途粗略分成三类：L2 负责最基本的局部波形拟合；envelope、Laplace 和 OT 负责扩大早期迭代的吸引域；source-independent 和 normalized/correlation objective 负责降低源波形和振幅标定误差的影响。
 
 ### 8.2 正则化
 
@@ -487,9 +490,11 @@ Bound constraints 也很重要。例如 \(\epsilon_r\) 和 \(\sigma\) 都应在�
 
 Neural-network parameterization 或 implicit representation 可以看成一种隐式正则化。Sun et al. (2024) 的 IFWI 用 neural network 表示多参数模型，并利用 neural network 的 frequency principle，使模型倾向于先恢复低频/大尺度结构，再恢复高频细节。但它不是从数学上消灭 crosstalk，而是改变了模型空间和优化路径，所以需要用对照实验验证它到底缓解了什么。
 
+选择正则化时要避免一个常见误区：目标函数下降、模型更平滑，并不自动意味着物理参数更真实。正则化强度 \(\alpha\) 本身应该成为实验变量，通过同一模型、同一初始条件、同一目标函数下的对比来判断。
+
 ### 8.3 Illumination Compensation
 
-Illumination 指的是模型中不同区域被 source-receiver 系统“看见”的程度。GPR-FWI 中 illumination 不均匀主要来自：
+Illumination 指的是模型中不同区域被 source-receiver 系统“看见”的程度。即使梯度公式完全正确，照明不均也会让更新集中在近源、近接收器或强波场区域。GPR-FWI 中 illumination 不均匀主要来自：
 
 - source 和 receiver 几何覆盖有限。
 - 近源、近接收器波场很强，深部或遮挡区域波场弱。
@@ -515,6 +520,8 @@ Meles et al. (2012) 的 sensitivity/resolution 分析说明，同样的数据 re
 5. Acquisition design：增加角度覆盖，例如 crosshole、多侧观测或更密集 receiver。
 
 Illumination compensation 和 regularization 不一样。Regularization 说的是“模型应该长什么样”，illumination compensation 说的是“梯度在不同位置的可信度和尺度是否公平”。前者约束模型结构，后者预处理更新方向。
+
+在后续实验中，照明补偿至少应该用三张图诊断：原始梯度、补偿后的梯度、以及 forward/adjoint wavefield energy 或 pseudo-Hessian diagonal。这样才能判断补偿是在修正几何照明，还是只是在把噪声和边界伪影放大。
 
 ## 9. 典型实验模型设置
 

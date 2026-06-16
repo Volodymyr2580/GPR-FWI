@@ -345,3 +345,21 @@ Next heartbeat:
 1. Continue polishing Sections 5-8, especially single-parameter inversion, biparameter crosstalk, time-domain workflow, and objective/regularization/illumination methods.
 2. If time permits, add a short “implementation checklist” after the gradient section to connect formulas with the local FDTD code.
 3. Keep the scope limited to Markdown research artifacts; do not touch `GPR_references/` PDFs or the untracked `Fast-GPR-FWI/` directory.
+
+## 2026-06-16 Heartbeat 12
+
+Status: polished the inversion-method sections of the main report.
+
+Completed:
+
+- Rewrote Sections 5-8 of `Part1_GPR_FWI_theory_and_methods.md` to align their tone with the polished mathematical opening.
+- Clarified why single-parameter \(\epsilon_r\) inversion should be the first diagnostic experiment before \(\sigma\) or dual-parameter inversion.
+- Strengthened the biparameter crosstalk discussion around Jacobian columns, Hessian off-diagonal blocks, parameter scaling, and the risk of trusting data misfit alone.
+- Added implementation-level notes to the time-domain workflow, especially wavefield storage, staggered-grid alignment, PML masking, source accumulation, parameter scaling, and finite-difference gradient checks.
+- Added a short method taxonomy for objective functions and a sharper boundary between regularization and illumination compensation.
+
+Next heartbeat:
+
+1. Polish Section 9 and the local-experiment mapping so the theory-to-experiment bridge reads like a clear roadmap.
+2. Add a concrete first gradient-check config sketch to `Part1_to_experiment_recommendations.md`.
+3. Consider one final consistency pass to keep `formula_summary.md` and `GPR_FWI_formula_summary.md` aligned with the main report wording.
