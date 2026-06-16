@@ -16,6 +16,8 @@
 - [x] 补充 Laplace-domain 和 OT objective 的具体公式或实验结论。
 - [x] 把 currently English-heavy sections 统一成更适合中文汇报的语气。
 - [x] 添加中文执行摘要、证据边界和术语说明。
+- [x] 润色 Sections 1-4，使研究问题、正演模型、目标函数和伴随梯度形成连续叙述。
+- [ ] 继续润色 Sections 5-8，使单/双参数、crosstalk、time-domain workflow 和方法地图达到同一汇报语气。
 
 ## Formula Summary
 

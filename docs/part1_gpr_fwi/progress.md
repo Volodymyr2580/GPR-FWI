@@ -327,3 +327,21 @@ Open questions:
 
 - Whether to keep English technical terms inline for readability or move more of them into a glossary.
 - Whether to split the final report into a concise presentation version and a longer technical appendix.
+
+## 2026-06-16 Heartbeat 11
+
+Status: polished the main mathematical-theory opening of the report.
+
+Completed:
+
+- Rewrote Sections 1-4 of `Part1_GPR_FWI_theory_and_methods.md` into a more coherent Chinese report style.
+- Clarified why GPR-FWI is a nonlinear PDE-constrained optimization problem instead of ordinary curve fitting.
+- Strengthened the Maxwell-to-GPR forward-model explanation, including the physical roles of \(\epsilon_r\) and \(\sigma\).
+- Refined the L2 objective discussion to connect cycle skipping, source wavelet uncertainty, amplitude ambiguity, and crosstalk.
+- Added the \(\epsilon_r\) chain-rule expression and an explicit reminder that adjoint-gradient signs must be checked by finite-difference gradient tests in code.
+
+Next heartbeat:
+
+1. Continue polishing Sections 5-8, especially single-parameter inversion, biparameter crosstalk, time-domain workflow, and objective/regularization/illumination methods.
+2. If time permits, add a short “implementation checklist” after the gradient section to connect formulas with the local FDTD code.
+3. Keep the scope limited to Markdown research artifacts; do not touch `GPR_references/` PDFs or the untracked `Fast-GPR-FWI/` directory.

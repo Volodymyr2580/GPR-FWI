@@ -49,9 +49,9 @@ GPR-FWI 可以被理解为一个由 Maxwell 方程约束的非线性优化问题
 
 ## 1. 研究问题：为什么 GPR-FWI 是一个非线性 PDE 约束优化问题
 
-GPR full waveform inversion 的核心问题是：给定发射源、接收器记录到的雷达波形，以及一个电磁波正演模型，反推出地下介质参数，例如 relative permittivity \(\epsilon_r\) 和 electric conductivity \(\sigma\)。
+GPR 全波形反演（GPR-FWI）的目标是：在已知发射源、接收器记录和电磁波正演机制的条件下，反推出地下介质参数。本文重点关注两个最常见的参数：相对介电常数 \(\epsilon_r\) 和电导率 \(\sigma\)。前者主要控制电磁波速度和相位，后者主要控制介质损耗、振幅衰减和波形拖尾。
 
-从数学上看，这不是一个普通曲线拟合问题，而是一个 PDE-constrained optimization problem。原因是合成数据不是直接由参数代数生成，而是由 Maxwell 方程组或其等价离散形式生成：
+从第一性原理看，GPR-FWI 不是普通的曲线拟合问题，而是一个由偏微分方程约束的优化问题（PDE-constrained optimization）。参数 \(\mathbf{m}\) 不能直接代入一个显式函数得到数据；它必须先进入 Maxwell 方程，产生电磁波场，再由接收器采样成雷达记录：
 
 \[
 \mathbf{m}
@@ -63,23 +63,23 @@ GPR full waveform inversion 的核心问题是：给定发射源、接收器记�
 \Phi(\mathbf{m}).
 \]
 
-这里：
+这条链路中的每一环都有明确含义：
 
-- \(\mathbf{m}\) 是地下模型参数。
-- \(\mathbf{u}\) 是电磁波场。
-- \(\mathbf{P}\) 是接收算子。
-- \(\Phi\) 是数据失配目标函数。
+- \(\mathbf{m}\)：地下模型参数，可以是单参数 \(\epsilon_r\)，也可以是双参数 \((\epsilon_r,\sigma)\)。
+- \(\mathbf{u}\)：由 Maxwell 方程生成的电磁波场，包含电场和/或磁场分量。
+- \(\mathbf{P}\)：观测算子，用来从全空间波场中取出接收器位置和分量上的时间序列。
+- \(\Phi\)：目标函数，用来度量合成数据和观测数据之间的差异。
 
-GPR-FWI 的非线性主要来自两个层面：
+这个问题的非线性主要来自两个层面：
 
-1. 波场 \(\mathbf{u}(\mathbf{m})\) 对介质参数是非线性的。
-2. 多参数反演时，\(\epsilon_r\) 和 \(\sigma\) 对数据的影响会耦合，导致 crosstalk。
+1. 波场 \(\mathbf{u}(\mathbf{m})\) 对介质参数的响应是非线性的。即使 Maxwell 方程对波场本身是线性的，改变介质参数后，传播路径、相位、反射和衰减都会整体改变。
+2. 多参数反演时，\(\epsilon_r\) 和 \(\sigma\) 对数据的影响并不正交。一个参数造成的误差可能被另一个参数部分吸收，这就是双参数 GPR-FWI 中常见的 crosstalk。
 
-与 seismic FWI 相比，GPR-FWI 的物理基础是电磁波传播，而不是声波或弹性波传播。因此 GPR 中的 conductivity、source wavelet、天线效应、近场效应和频散/衰减问题更突出。
+与地震 FWI 相比，GPR-FWI 共享“用完整波形约束地下模型”的反演思想，但物理方程不同。地震 FWI 通常以声波或弹性波方程为核心；GPR-FWI 则以电磁波 Maxwell 方程为核心。因此，GPR 中的电导率、source wavelet、天线耦合、近场效应、频散和衰减问题更加突出，也更容易影响反演稳定性。
 
 ## 2. 从 Maxwell 方程到 GPR 正演模型
 
-在各向同性介质中，GPR 时域正演可以从 Maxwell 方程组开始：
+在各向同性介质中，GPR 时域正演可以从 Maxwell 方程组出发：
 
 \[
 \nabla \times \mathbf{E}
@@ -97,9 +97,9 @@ GPR-FWI 的非线性主要来自两个层面：
 \mathbf{J}_s .
 \]
 
-其中 \(\epsilon=\epsilon_0\epsilon_r\)，\(\mu=\mu_0\mu_r\)。在大多数近地表 GPR 问题中，通常假设 \(\mu_r \approx 1\)，所以主要反演对象是 \(\epsilon_r\) 和 \(\sigma\)。
+其中 \(\mathbf{E}\) 是电场，\(\mathbf{H}\) 是磁场，\(\mathbf{J}_s\) 是外加源项，\(\epsilon=\epsilon_0\epsilon_r\)，\(\mu=\mu_0\mu_r\)。在多数近地表 GPR 场景中，介质可以近似为非磁性介质，即 \(\mu_r \approx 1\)。这使得主要未知量集中在 \(\epsilon_r\) 和 \(\sigma\) 上。
 
-消去磁场 \(\mathbf{H}\) 后，可以得到二阶电场方程：
+消去磁场 \(\mathbf{H}\) 后，可以得到一个常用的二阶电场方程：
 
 \[
 \nabla \times \mu^{-1} \nabla \times \mathbf{E}
@@ -111,16 +111,16 @@ GPR-FWI 的非线性主要来自两个层面：
 -\frac{\partial \mathbf{J}_s}{\partial t}.
 \]
 
-这个方程清楚显示：
+这个形式非常适合理解两个参数的物理分工：
 
-- \(\epsilon\) 乘在二阶时间导数项上，强烈影响传播速度和相位。
-- \(\sigma\) 乘在一阶时间导数项上，强烈影响衰减和振幅。
+- \(\epsilon\) 乘在二阶时间导数项上，直接影响波速 \(v \approx 1/\sqrt{\mu\epsilon}\)，因此强烈控制走时、相位和反射界面位置。
+- \(\sigma\) 乘在一阶时间导数项上，对能量耗散和振幅衰减更加敏感，因此更容易与 source wavelet、天线响应和几何扩散混淆。
 
-在数值实现中，GPR 正演常用 FDTD。FDTD 可以理解为把空间和时间切成网格，在每个时间步更新电场和磁场。经典 Yee grid 会把不同电磁场分量放在交错位置，这样可以更自然地离散 curl 算子。
+在数值实现中，GPR 正演常用 FDTD（finite-difference time-domain）。FDTD 可以理解为把空间和时间切成网格，在每个时间步交替更新电场和磁场。经典 Yee grid 会把不同电磁场分量放在交错位置，从而更自然地离散 curl 算子。Meles et al. (2012)、Ernst et al. (2007) 等 GPR-FWI 工作都直接或间接依赖这种时域 Maxwell 正演框架。
 
 ## 3. GPR 数据、观测算子和 FWI 目标函数
 
-对第 \(s\) 个发射源，正演波场记为 \(\mathbf{u}_s(\mathbf{m})\)，接收器记录的合成数据为：
+对第 \(s\) 个发射源，正演得到的波场记为 \(\mathbf{u}_s(\mathbf{m})\)。接收器并不会观测整个计算区域中的波场，而只记录若干位置、若干分量、若干时间采样点上的信号。因此，合成数据可写为：
 
 \[
 \mathbf{d}^{syn}_s
@@ -128,7 +128,7 @@ GPR-FWI 的非线性主要来自两个层面：
 \mathbf{P}\mathbf{u}_s(\mathbf{m}).
 \]
 
-最基础的 waveform least-squares objective 是：
+最基础的全波形最小二乘目标函数为：
 
 \[
 \Phi(\mathbf{m})
@@ -142,7 +142,7 @@ GPR-FWI 的非线性主要来自两个层面：
 \right\|_2^2.
 \]
 
-残差定义为：
+其中残差定义为：
 
 \[
 \mathbf{r}_s
@@ -152,15 +152,17 @@ GPR-FWI 的非线性主要来自两个层面：
 \mathbf{d}^{obs}_s.
 \]
 
-这个目标函数直观、容易实现，但也有典型问题：
+这个目标函数直观、容易实现，也是许多 GPR-FWI 实验的起点。不过，它的几何形状并不总是友好：
 
-- 如果初始模型不好，合成波形和观测波形相差超过半个周期，容易 cycle skipping。
-- 振幅误差可能来自 conductivity，也可能来自 source wavelet 或天线耦合。
-- 在双参数反演中，一个参数的误差可能被另一个参数“解释掉”，形成 crosstalk。
+- 如果初始模型较差，合成波形和观测波形相差超过半个周期，L2 失配可能把错误的波峰和波谷配对，形成 cycle skipping。
+- 振幅误差不一定只来自 \(\sigma\)，也可能来自 source wavelet、天线耦合、几何扩散、边界吸收或噪声。
+- 在双参数反演中，\(\epsilon_r\) 和 \(\sigma\) 的灵敏度核可能相互重叠，一个参数的误差会被另一个参数“解释掉”，形成 crosstalk。
 
-因此文献中出现了 normalized objective、source-independent objective、envelope objective、Laplace-domain objective、frequency-domain multiscale objective 等变体。
+因此，文献中出现了 normalized objective、source-independent objective、envelope objective、Laplace-domain objective、frequency-domain multiscale objective、optimal-transport distance 等变体。它们的共同目标不是改变 Maxwell 正演本身，而是改变残差的定义方式，让优化问题在早期迭代中更不容易被错误相位、错误震源或错误振幅牵着走。
 
 ## 4. 伴随状态法与 GPR-FWI 梯度
+
+如果直接对每个模型网格点逐一扰动并重新正演，计算梯度的成本会随参数维度线性增长，几乎不可接受。伴随状态法的价值就在这里：它把“很多次参数扰动正演”转化为“每个 shot 一次正演加一次伴随传播”。
 
 设正演约束为：
 
@@ -183,9 +185,9 @@ GPR-FWI 的非线性主要来自两个层面：
 dt .
 \]
 
-伴随状态法的关键思想是：不显式构造完整 Jacobian，而是通过一次正向传播和一次反向传播得到梯度。对波场变量 \(\mathbf{u}\) 求变分并令其为零，可以得到 adjoint equation。数据残差在接收器位置作为 adjoint source 注入，并沿时间反向传播。
+对波场变量 \(\mathbf{u}\) 求变分并令其为零，可以得到伴随方程（adjoint equation）。数据残差在接收器位置作为伴随源注入，并沿时间反向传播。这样，正演波场表示“源如何照亮地下”，伴随波场表示“数据残差如何回传到地下”，两者的时空相关给出模型参数的更新方向。
 
-如果使用二阶电场算子：
+若采用二阶电场算子：
 
 \[
 \mathcal{F}(\mathbf{E};\epsilon,\sigma)
@@ -199,7 +201,7 @@ dt .
 \mathbf{f},
 \]
 
-则参数扰动满足：
+则对参数的扰动满足：
 
 \[
 \delta_\epsilon \mathcal{F}
@@ -213,7 +215,7 @@ dt .
 \delta\sigma\,\partial_t\mathbf{E}.
 \]
 
-因此形式上有：
+因此，忽略符号约定和边界项后，连续形式的梯度可写成如下相关型表达：
 
 \[
 \frac{\partial \Phi}{\partial \epsilon}
@@ -233,9 +235,18 @@ dt .
 \,dt.
 \]
 
-这里的正负号取决于 Lagrangian 符号约定和 residual 定义。
+这里的正负号取决于 Lagrangian 的符号约定、残差定义以及伴随方程的写法。在实际代码中，不能只凭连续公式判断正负号，必须通过有限差分梯度检查验证。
 
-Meles et al. (2012) 给出了一个与 FDTD 实现更接近的 sensitivity 视角：\(\epsilon\) sensitivity 由 adjoint receiver wavefield 与 forward electric field 的时间导数相关得到，而 \(\sigma\) sensitivity 由 adjoint receiver wavefield 与 forward electric field 本身相关得到。这正是“梯度是 forward wavefield 和 adjoint wavefield 的时间相关成像条件”的 GPR 版本。
+如果模型参数使用相对介电常数 \(\epsilon_r\)，还需要链式法则：
+
+\[
+\frac{\partial \Phi}{\partial \epsilon_r}
+=
+\epsilon_0
+\frac{\partial \Phi}{\partial \epsilon}.
+\]
+
+Meles et al. (2012) 给出了一个更贴近 FDTD sensitivity 实现的视角：\(\epsilon\) sensitivity 由 adjoint receiver wavefield 与 forward electric field 的时间导数相关得到，而 \(\sigma\) sensitivity 由 adjoint receiver wavefield 与 forward electric field 本身相关得到。它和上面的二阶电场推导在“相关成像条件”这一点上是一致的；时间导数阶数的差异来自所选方程形式、状态变量和离散化方式。这个差异已经在 `formula_summary.md` 中标记为后续需要重点核对的实现细节。
 
 ## 5. 单参数反演：先把问题降到可理解
 
