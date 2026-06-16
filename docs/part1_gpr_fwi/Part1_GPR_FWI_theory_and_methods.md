@@ -1,0 +1,522 @@
+# 第一部分：GPR 数据 FWI 的数学理论与方法综述
+
+Status: working draft. This file is intentionally incomplete and will be expanded across heartbeats.
+
+## 1. 研究问题：为什么 GPR-FWI 是一个非线性 PDE 约束优化问题
+
+GPR full waveform inversion 的核心问题是：给定发射源、接收器记录到的雷达波形，以及一个电磁波正演模型，反推出地下介质参数，例如 relative permittivity \(\epsilon_r\) 和 electric conductivity \(\sigma\)。
+
+从数学上看，这不是一个普通曲线拟合问题，而是一个 PDE-constrained optimization problem。原因是合成数据不是直接由参数代数生成，而是由 Maxwell 方程组或其等价离散形式生成：
+
+\[
+\mathbf{m}
+\rightarrow
+\mathbf{u}(\mathbf{m})
+\rightarrow
+\mathbf{P}\mathbf{u}(\mathbf{m})
+\rightarrow
+\Phi(\mathbf{m}).
+\]
+
+这里：
+
+- \(\mathbf{m}\) 是地下模型参数。
+- \(\mathbf{u}\) 是电磁波场。
+- \(\mathbf{P}\) 是接收算子。
+- \(\Phi\) 是数据失配目标函数。
+
+GPR-FWI 的非线性主要来自两个层面：
+
+1. 波场 \(\mathbf{u}(\mathbf{m})\) 对介质参数是非线性的。
+2. 多参数反演时，\(\epsilon_r\) 和 \(\sigma\) 对数据的影响会耦合，导致 crosstalk。
+
+与 seismic FWI 相比，GPR-FWI 的物理基础是电磁波传播，而不是声波或弹性波传播。因此 GPR 中的 conductivity、source wavelet、天线效应、近场效应和频散/衰减问题更突出。
+
+## 2. 从 Maxwell 方程到 GPR 正演模型
+
+在各向同性介质中，GPR 时域正演可以从 Maxwell 方程组开始：
+
+\[
+\nabla \times \mathbf{E}
+=
+-\mu \frac{\partial \mathbf{H}}{\partial t},
+\]
+
+\[
+\nabla \times \mathbf{H}
+=
+\sigma \mathbf{E}
++
+\epsilon \frac{\partial \mathbf{E}}{\partial t}
++
+\mathbf{J}_s .
+\]
+
+其中 \(\epsilon=\epsilon_0\epsilon_r\)，\(\mu=\mu_0\mu_r\)。在大多数近地表 GPR 问题中，通常假设 \(\mu_r \approx 1\)，所以主要反演对象是 \(\epsilon_r\) 和 \(\sigma\)。
+
+消去磁场 \(\mathbf{H}\) 后，可以得到二阶电场方程：
+
+\[
+\nabla \times \mu^{-1} \nabla \times \mathbf{E}
++
+\sigma \frac{\partial \mathbf{E}}{\partial t}
++
+\epsilon \frac{\partial^2 \mathbf{E}}{\partial t^2}
+=
+-\frac{\partial \mathbf{J}_s}{\partial t}.
+\]
+
+这个方程清楚显示：
+
+- \(\epsilon\) 乘在二阶时间导数项上，强烈影响传播速度和相位。
+- \(\sigma\) 乘在一阶时间导数项上，强烈影响衰减和振幅。
+
+在数值实现中，GPR 正演常用 FDTD。FDTD 可以理解为把空间和时间切成网格，在每个时间步更新电场和磁场。经典 Yee grid 会把不同电磁场分量放在交错位置，这样可以更自然地离散 curl 算子。
+
+## 3. GPR 数据、观测算子和 FWI 目标函数
+
+对第 \(s\) 个发射源，正演波场记为 \(\mathbf{u}_s(\mathbf{m})\)，接收器记录的合成数据为：
+
+\[
+\mathbf{d}^{syn}_s
+=
+\mathbf{P}\mathbf{u}_s(\mathbf{m}).
+\]
+
+最基础的 waveform least-squares objective 是：
+
+\[
+\Phi(\mathbf{m})
+=
+\frac{1}{2}
+\sum_s
+\left\|
+\mathbf{P}\mathbf{u}_s(\mathbf{m})
+-
+\mathbf{d}^{obs}_s
+\right\|_2^2.
+\]
+
+残差定义为：
+
+\[
+\mathbf{r}_s
+=
+\mathbf{P}\mathbf{u}_s(\mathbf{m})
+-
+\mathbf{d}^{obs}_s.
+\]
+
+这个目标函数直观、容易实现，但也有典型问题：
+
+- 如果初始模型不好，合成波形和观测波形相差超过半个周期，容易 cycle skipping。
+- 振幅误差可能来自 conductivity，也可能来自 source wavelet 或天线耦合。
+- 在双参数反演中，一个参数的误差可能被另一个参数“解释掉”，形成 crosstalk。
+
+因此文献中出现了 normalized objective、source-independent objective、envelope objective、Laplace-domain objective、frequency-domain multiscale objective 等变体。
+
+## 4. 伴随状态法与 GPR-FWI 梯度
+
+设正演约束为：
+
+\[
+\mathcal{F}(\mathbf{u},\mathbf{m})=0.
+\]
+
+构造 Lagrangian：
+
+\[
+\mathcal{L}(\mathbf{u},\mathbf{m},\boldsymbol{\lambda})
+=
+\Phi(\mathbf{u},\mathbf{m})
++
+\int_0^T
+\langle
+\boldsymbol{\lambda},
+\mathcal{F}(\mathbf{u},\mathbf{m})
+\rangle
+dt .
+\]
+
+伴随状态法的关键思想是：不显式构造完整 Jacobian，而是通过一次正向传播和一次反向传播得到梯度。对波场变量 \(\mathbf{u}\) 求变分并令其为零，可以得到 adjoint equation。数据残差在接收器位置作为 adjoint source 注入，并沿时间反向传播。
+
+如果使用二阶电场算子：
+
+\[
+\mathcal{F}(\mathbf{E};\epsilon,\sigma)
+=
+\nabla \times \mu^{-1}\nabla\times\mathbf{E}
++
+\sigma\partial_t\mathbf{E}
++
+\epsilon\partial_{tt}\mathbf{E}
+-
+\mathbf{f},
+\]
+
+则参数扰动满足：
+
+\[
+\delta_\epsilon \mathcal{F}
+=
+\delta\epsilon\,\partial_{tt}\mathbf{E},
+\]
+
+\[
+\delta_\sigma \mathcal{F}
+=
+\delta\sigma\,\partial_t\mathbf{E}.
+\]
+
+因此形式上有：
+
+\[
+\frac{\partial \Phi}{\partial \epsilon}
+\propto
+\int_0^T
+\boldsymbol{\lambda}(t)\cdot
+\partial_{tt}\mathbf{E}(t)
+\,dt,
+\]
+
+\[
+\frac{\partial \Phi}{\partial \sigma}
+\propto
+\int_0^T
+\boldsymbol{\lambda}(t)\cdot
+\partial_t\mathbf{E}(t)
+\,dt.
+\]
+
+这里的正负号取决于 Lagrangian 符号约定和 residual 定义。
+
+Meles et al. (2012) 给出了一个与 FDTD 实现更接近的 sensitivity 视角：\(\epsilon\) sensitivity 由 adjoint receiver wavefield 与 forward electric field 的时间导数相关得到，而 \(\sigma\) sensitivity 由 adjoint receiver wavefield 与 forward electric field 本身相关得到。这正是“梯度是 forward wavefield 和 adjoint wavefield 的时间相关成像条件”的 GPR 版本。
+
+## 5. 单参数反演：先把问题降到可理解
+
+单参数 GPR-FWI 通常只反演 \(\epsilon_r\) 或等价的 velocity。这样做的好处是问题更稳定，因为数据残差只被允许通过一个参数来解释。
+
+如果只反演 \(\epsilon_r\)，物理直觉是：
+
+- \(\epsilon_r\) 控制电磁波速度：
+
+\[
+v=\frac{1}{\sqrt{\mu\epsilon}}
+=
+\frac{1}{\sqrt{\mu_0\epsilon_0\epsilon_r}}
+\quad(\mu_r\approx 1).
+\]
+
+- \(\epsilon_r\) 的错误会主要表现为走时、相位和波形对齐错误。
+- 初始 \(\epsilon_r\) 如果太差，L2 waveform objective 很容易 cycle skipping。
+
+因此，单参数反演适合做第一性原理验证：
+
+1. 先固定 \(\sigma\)，只让 \(\epsilon_r\) 更新。
+2. 检查 adjoint gradient 是否与 finite-difference gradient check 一致。
+3. 观察目标函数是否下降、波形是否逐步对齐。
+4. 再逐步引入正则化、照明补偿和更复杂目标函数。
+
+如果只反演 \(\sigma\)，问题通常更难。原因是 conductivity 对 GPR 数据的影响主要表现为振幅衰减，而振幅也会受到 source wavelet、天线耦合、几何扩散、噪声和边界吸收的影响。因此 \(\sigma\) 反演很容易把非介质因素误解释为 conductivity 结构。
+
+所以，从实验设计角度看，推荐顺序是：
+
+1. 单参数 \(\epsilon_r\) 反演。
+2. 固定真值或可信 \(\epsilon_r\) 后反演 \(\sigma\)，测试 \(\sigma\) 灵敏度。
+3. 最后进入 \((\epsilon_r,\sigma)\) 双参数反演。
+
+## 6. 双参数反演与 Crosstalk
+
+双参数 GPR-FWI 的目标是同时恢复：
+
+\[
+\mathbf{m}=(\epsilon_r,\sigma).
+\]
+
+理想情况下，\(\epsilon_r\) 解释相位和速度，\(\sigma\) 解释衰减和振幅。但真实反演里二者并不会干净分工。线性化后有：
+
+\[
+\delta\mathbf{d}
+\approx
+J_{\epsilon_r}\delta\epsilon_r
++
+J_\sigma\delta\sigma.
+\]
+
+如果 \(J_{\epsilon_r}\) 和 \(J_\sigma\) 的作用方向不够独立，同一个数据残差既可以被 \(\delta\epsilon_r\) 解释，也可以被 \(\delta\sigma\) 解释，就会发生 crosstalk。
+
+用 Gauss-Newton 的块 Hessian 看得更清楚：
+
+\[
+\begin{bmatrix}
+J_{\epsilon_r}^T J_{\epsilon_r}
+&
+J_{\epsilon_r}^T J_\sigma
+\\
+J_\sigma^T J_{\epsilon_r}
+&
+J_\sigma^T J_\sigma
+\end{bmatrix}.
+\]
+
+对角块描述每个参数自己的可分辨性，非对角块描述两个参数之间的耦合。非对角块越强，双参数 trade-off 越严重。
+
+Lavoue et al. (2014) 给出了一个很有启发性的频域双参数例子。他们在 2D frequency-domain GPR-FWI 中同时反演 permittivity 和 conductivity，并指出：
+
+- GPR 数据通常对 permittivity 更敏感。
+- conductivity 也会影响振幅和相位，因此不能简单忽略。
+- 先反演 permittivity、再反演 conductivity 的 cascaded strategy 可能失败，因为第一步中的 permittivity 误差会系统性映射成 conductivity artifacts。
+- 同时反演通常更合理，但必须处理参数尺度、灵敏度和正则化。
+
+他们引入参数缩放：
+
+\[
+(\epsilon_r,\sigma_r/\beta),
+\]
+
+其中 \(\beta\) 控制 conductivity 相对于 permittivity 的更新权重。直观理解：
+
+- \(\beta<1\)：压低 conductivity 更新，让反演先更依赖 permittivity。
+- \(\beta>1\)：放大 conductivity 更新，但容易引入 conductivity 振荡和伪影。
+
+这对我们后续实验非常重要：双参数反演不能只看最终 data misfit，因为不同 \(\beta\) 可能得到相近的 misfit，却给出完全不同的 conductivity 模型。也就是说，数据拟合好不等于参数恢复可信。
+
+Lavoue et al. 还加入 conductivity 的 Tikhonov regularization：
+
+\[
+C(\mathbf{m})
+=
+C_D(\mathbf{m})
++
+\lambda C_M(\mathbf{m}),
+\]
+
+\[
+C_M(\mathbf{m})
+=
+\frac{1}{2}
+\sigma_r^T D\sigma_r,
+\]
+
+其中 \(D\) 与 Laplacian smoothing 相关。这个正则化的作用不是“让结果变好看”，而是抑制 conductivity 中用于补偿错误低波数结构的高波数伪影。
+
+这里需要区分两个概念：
+
+- Parameter scaling 改变参数空间的相对权重，主要是引导反演路径。
+- Regularization 改变目标函数，主要是约束模型结构。
+
+在双参数 GPR-FWI 中，两者经常需要同时存在。只靠 L-BFGS-B 这种 quasi-Newton 方法并不一定能自动解决参数尺度和 crosstalk 问题，因为近似 Hessian 未必足够准确地平衡不同参数类型。
+
+## 7. Time-Domain GPR-FWI 技术路线
+
+时域 GPR-FWI 的优势是物理过程直观：发射一个时域 source wavelet，FDTD 正向推进 Maxwell 方程，接收器记录完整 radargram，然后用残差反向传播得到梯度。它非常适合解释“梯度为什么是 forward wavefield 和 adjoint wavefield 的相关”。
+
+一个标准 time-domain adjoint FWI 闭环可以写成：
+
+1. 给定当前模型 \(\mathbf{m}_k=(\epsilon_r,\sigma)\)。
+2. 对每个 source 做正演，得到 \(\mathbf{u}_s(\mathbf{m}_k)\)。
+3. 用接收算子取出合成数据：
+
+\[
+\mathbf{d}^{syn}_s=\mathbf{P}\mathbf{u}_s(\mathbf{m}_k).
+\]
+
+4. 计算 residual：
+
+\[
+\mathbf{r}_s=\mathbf{d}^{syn}_s-\mathbf{d}^{obs}_s.
+\]
+
+5. 把 residual 作为 adjoint source 从 receiver 位置反向传播。
+6. 在每个网格点累加 forward wavefield 和 adjoint wavefield 的时间相关，形成 \(\epsilon_r\) 和 \(\sigma\) 梯度。
+7. 对梯度做必要的 scaling、smoothing、masking 或 illumination compensation。
+8. 用 steepest descent、conjugate gradient、L-BFGS、Adam/RMSprop 等优化器更新模型。
+9. 重复直到 data misfit、模型变化量或验证指标满足停止条件。
+
+这里的关键不是“反向传播”这个词本身，而是 adjoint wavefield 的物理含义：它是由接收端残差激发出来、沿时间反向传播的误差信号。正演波场告诉我们某个位置是否被 source 照亮，伴随波场告诉我们该位置是否能解释接收端残差。两者相乘并在时间上累加，就得到该位置对目标函数的贡献。
+
+在时域实现中，需要特别注意几个技术细节。
+
+第一，forward wavefield 的保存。梯度需要 forward wavefield 和 adjoint wavefield 在同一时间对应，所以直接做法是保存全部正演波场。但这会消耗大量内存。常见替代方案包括 checkpointing、边正演边存关键时间片、重新正演恢复波场等。
+
+第二，Yee grid 或 staggered grid 的变量位置。电场、磁场、\(\epsilon\)、\(\sigma\) 可能不在完全相同的网格位置。梯度累加时必须确认参数更新位置和场量插值方式，否则会出现数值上的错位。
+
+第三，PML 区域。PML 是为了吸收边界反射而引入的人工区域。通常不希望反演 PML 参数，也不希望 PML 内的强数值效应污染物理模型，所以梯度常需要在 PML 区域置零或施加 mask。
+
+第四，多炮累加。完整梯度是所有 source 的贡献之和：
+
+\[
+\nabla \Phi(\mathbf{m})
+=
+\sum_s
+\nabla \Phi_s(\mathbf{m}).
+\]
+
+如果 source 很多，可以使用 mini-batch 或 stochastic source encoding，但这会引入梯度噪声，需要更谨慎的步长和收敛判断。
+
+第五，步长和尺度。GPR 中 \(\epsilon_r\) 和 \(\sigma\) 量纲差异极大，且 \(\sigma\) 梯度常比 \(\epsilon_r\) 更不稳定。双参数更新时必须考虑 parameter scaling，否则优化器可能把残差错误地压到 conductivity 上。
+
+## 8. 目标函数、正则化和照明补偿
+
+### 8.1 目标函数
+
+最基本的目标函数是 L2 waveform misfit：
+
+\[
+\Phi_{L2}(\mathbf{m})
+=
+\frac{1}{2}
+\sum_s
+\|\mathbf{P}\mathbf{u}_s(\mathbf{m})-\mathbf{d}^{obs}_s\|_2^2.
+\]
+
+它的优点是简单、梯度推导清楚、和 adjoint-state method 配合自然。缺点也很明显：当合成波形和观测波形相差超过半个周期时，L2 objective 会把错误相位当成正确下降方向，形成 cycle skipping。
+
+Normalized 或 correlation-based objective 的目标是降低 source amplitude、receiver gain 或几何扩散对振幅的影响。它们通常更关注波形形状或相对相似度，而不是绝对振幅。这对 GPR 很有意义，因为 GPR 的振幅除了介质参数之外，还受天线耦合、源波形、近场效应和仪器响应影响。
+
+Source-independent objective 试图绕开“source wavelet 不准确”的问题。Liu et al. (2022) 使用 cross-convolution 的思路，把 modeled trace 和 observed reference trace、observed trace 和 modeled reference trace 组合起来，使目标函数中两项含有相同的 source wavelet 因子。这样，即使 source wavelet 不完全准确，反演仍然可能推进。
+
+Envelope objective 用 Hilbert transform 构造包络：
+
+\[
+E_{env}(t)=\sqrt{E(t)^2+H(E(t))^2}.
+\]
+
+包络更强调振幅包络和大尺度到时信息，通常比原始振荡波形更不容易陷入局部极小值。Liu et al. (2022) 把 source-independent 思想和 envelope objective 结合，用于 cross-hole GPR。需要谨慎的是，convolution、cross-correlation 和 envelope transform 本身也会引入新的非线性，所以它不是无条件优于 L2，而是适合 source uncertainty 和 cycle skipping 比较严重的情形。
+
+Frequency-domain objective 通常选择若干频率分量来反演。优点是可以从低频到高频做 multiscale，也可以减少每次反演使用的数据量。Lavoue et al. (2014) 说明，双参数 GPR-FWI 中 permittivity 和 conductivity 对数据的相对影响随频率变化，因此 broad frequency bandwidth 对同步恢复两者很重要。
+
+Laplace-domain objective 会强调信号早期和低频/平滑成分，常用于缓解 cycle skipping 或低频缺失。它可以作为 time-domain 和 frequency-domain 之外的补充路线，但本报告后续仍以 time-domain 为主线。
+
+### 8.2 正则化
+
+正则化的作用是把“只拟合数据”变成“在合理模型集合中拟合数据”。一个通用写法是：
+
+\[
+\Phi_R(\mathbf{m})
+=
+\Phi_D(\mathbf{m})
++
+\alpha R(\mathbf{m}).
+\]
+
+Tikhonov regularization 常用于抑制模型过度振荡：
+
+\[
+R(\mathbf{m})
+=
+\frac{1}{2}
+\|\mathbf{L}(\mathbf{m}-\mathbf{m}_{ref})\|_2^2.
+\]
+
+如果 \(\mathbf{L}\) 是 identity，它约束模型不要偏离参考模型太多；如果 \(\mathbf{L}\) 是 gradient 或 Laplacian，它约束模型平滑。Lavoue et al. (2014) 对 conductivity 使用了与 Laplacian 相关的 Tikhonov 项，因为 conductivity 更容易产生高波数伪影。
+
+Total variation regularization 更偏向保边平滑：
+
+\[
+R_{TV}(\mathbf{m})
+=
+\int
+\sqrt{|\nabla \mathbf{m}|^2+\eta^2}
+d\mathbf{x}.
+\]
+
+它适合有块状异常体或层状界面的模型，但可能带来 staircasing，也可能过度偏向分段常数结构。
+
+Bound constraints 也很重要。例如 \(\epsilon_r\) 和 \(\sigma\) 都应在物理合理范围内。L-BFGS-B 的 `B` 就表示 bound-constrained，它可以在优化过程中保持参数不跑出给定上下界。
+
+Neural-network parameterization 或 implicit representation 可以看成一种隐式正则化。Sun et al. (2024) 的 IFWI 用 neural network 表示多参数模型，并利用 neural network 的 frequency principle，使模型倾向于先恢复低频/大尺度结构，再恢复高频细节。但它不是从数学上消灭 crosstalk，而是改变了模型空间和优化路径，所以需要用对照实验验证它到底缓解了什么。
+
+### 8.3 Illumination Compensation
+
+Illumination 指的是模型中不同区域被 source-receiver 系统“看见”的程度。GPR-FWI 中 illumination 不均匀主要来自：
+
+- source 和 receiver 几何覆盖有限。
+- 近源、近接收器波场很强，深部或遮挡区域波场弱。
+- conductivity 衰减会让深部或远 offset 信号变弱。
+- surface-to-surface acquisition 比 crosshole acquisition 更容易出现照明盲区。
+
+Meles et al. (2012) 的 sensitivity/resolution 分析说明，同样的数据 residual 对不同区域的约束能力是不一样的。近源强波场可能主导梯度，使反演更关注已经被强照亮的位置，而不是物理上最需要修正的位置。
+
+常见处理方式包括：
+
+1. Gradient smoothing：降低局部尖峰，减少更新振荡。
+2. Depth/time gain 或 trace weighting：平衡早到强信号和晚到弱信号，但必须小心不要同时放大噪声。
+3. Pseudo-Hessian 或 diagonal Hessian normalization：
+
+\[
+\tilde{g}(\mathbf{x})
+=
+\frac{g(\mathbf{x})}
+{H_{diag}(\mathbf{x})+\eta}.
+\]
+
+4. Source-receiver illumination mask：对不可分辨区域降低更新权重。
+5. Acquisition design：增加角度覆盖，例如 crosshole、多侧观测或更密集 receiver。
+
+Illumination compensation 和 regularization 不一样。Regularization 说的是“模型应该长什么样”，illumination compensation 说的是“梯度在不同位置的可信度和尺度是否公平”。前者约束模型结构，后者预处理更新方向。
+
+## 9. 典型实验模型设置
+
+文献中的 GPR-FWI 实验大致可以分成四类：crosshole、on-ground/surface-to-surface、简单异常体模型、复杂 benchmark 模型。它们各自回答的问题不同。
+
+Crosshole GPR 的优点是 source 和 receiver 分布在两个钻孔中，照明角度更丰富，直达波和透射波对介质速度/介电常数比较敏感。Meles et al. (2012) 的 sensitivity/resolution 分析和 Liu et al. (2022) 的 source-independent envelope objective 都和 cross-hole 设置紧密相关。它适合研究：
+
+- time-domain adjoint gradient。
+- acquisition geometry 对 illumination 的影响。
+- source-independent objective 对 source wavelet uncertainty 的缓解。
+- \(\epsilon_r/\sigma\) 双参数同步更新。
+
+On-ground 或 surface-to-surface GPR 更接近很多工程场景，但反演更病态。source 和 receiver 都在地表附近，深部和侧向结构照明不足，conductivity 更容易出现非唯一性。Lavoue et al. (2014) 的频域多偏移实验说明，在 surface-to-surface acquisition 中，即使 data misfit 很接近，不同 parameter scaling 也可能给出差异很大的 conductivity 模型。因此这类实验适合研究：
+
+- partial illumination。
+- parameter scaling。
+- conductivity regularization。
+- frequency sampling strategy。
+- data misfit 与 model correctness 的不一致。
+
+简单异常体模型，例如圆柱体、十字形异常体、层状模型，是最适合做第一性原理验证的实验。它们不一定最真实，但最容易解释。推荐用它们检查：
+
+- forward solver 是否稳定。
+- adjoint gradient 是否正确。
+- 单参数 \(\epsilon_r\) 是否能恢复相位结构。
+- 错误 \(\sigma\) 是否污染 \(\epsilon_r\)。
+- 错误 \(\epsilon_r\) 是否导致 \(\sigma\) artifact。
+
+复杂 benchmark，例如 Marmousi 或 Overthrust 类模型，可以测试算法在强横向变化、多尺度结构和复杂照明下的表现。但它们不适合一开始就用来判断梯度公式是否正确，因为失败原因太多：初始模型、频率、步长、PML、正则化、优化器和照明都可能混在一起。
+
+结合当前本地项目，已有实验线可以映射到下面几个理论问题。
+
+| Local line | Role | Theory link |
+| --- | --- | --- |
+| `Gpr_fwi/` baseline rewrite notes | 回归最基本 FWI 流程 | forward data、residual、gradient、update 的最小闭环 |
+| `Gpr_fwi/mode2_Tikhonov/` | 二阶 Tikhonov 正则化 | \(J=J_{data}+J_{reg}\)，\(\nabla^2(\nabla^2 m)\)，平滑与过平滑 |
+| `Gpr_fwi/mode2_unet/` | 双参数 UNet 重参数化 | neural parameterization、\(\epsilon/\sigma\) 双网络、物理范围约束 |
+| `Gpr_fwi/mode2_Hybrid/` | hybrid optimization variant, details pending | 传统梯度与网络先验结合，需进一步确认具体实现 |
+| `Gpr_fwi/mode1_unet_fix_parallel/` | MPI shot parallelization | 多炮梯度累加、source 级并行 |
+| `Fast-GPR-FWI/` | CUDA kernel + PyTorch 双参数加速 | 高性能正演/梯度、autograd 集成、双参数 inversion |
+| `隐式FWI/` | IFWI/dropout-IFWI 复现 | implicit representation、frequency principle、dropout 正则化、illumination diagnosis |
+| `marmousi_paper/gpr-inversion/` | clean migration target | 配置化实验矩阵、Marmousi/Overthrust、eps-only/sig-only/twopara/eps-then-sig |
+
+这些本地实验给出一个很自然的后续路线：不要直接跳到最复杂的 IFWI 或 Marmousi，而是先构造最小可验证链条，再逐步打开复杂度。
+
+推荐实验阶梯是：
+
+1. 简单模型 + 单参数 \(\epsilon_r\) + L2 waveform objective。
+2. 同一模型 + finite-difference gradient check。
+3. 固定 \(\sigma\) 只反演 \(\epsilon_r\)，再固定 \(\epsilon_r\) 只反演 \(\sigma\)。
+4. 同时反演 \(\epsilon_r,\sigma\)，观察 crosstalk。
+5. 加入 parameter scaling 和 Tikhonov/TV 正则化。
+6. 加入 illumination compensation 或 pseudo-Hessian normalization。
+7. 比较 L2、normalized、source-independent、envelope objective。
+8. 最后再比较 traditional parameter grid、UNet reparameterization、implicit representation。
+
+这样设计的好处是，每一步只改变一个核心因素。对初学者来说，这叫 control variable，也就是“控制变量”：如果实验结果变了，我们能知道主要是哪个因素造成的，而不是所有东西一起变化后无法解释。
+
+## References Used So Far
+
+- Meles et al. 2012, IEEE TGRS, DOI: `10.1109/TGRS.2011.2170078`.
+- Busch et al. 2012, Geophysics, DOI: `10.1190/GEO2012-0045.1`.
+- Lavoue et al. 2014, GJI, DOI: `10.1093/gji/ggt528`.
+- Liu et al. 2022, Remote Sensing, DOI: `10.3390/rs14194878`.
+- Sun et al. 2024, GJI, DOI: `10.1093/gji/ggae420`.
