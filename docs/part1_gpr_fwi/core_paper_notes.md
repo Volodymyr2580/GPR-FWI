@@ -497,3 +497,163 @@ Update method:
 Use for Part 1:
 
 - This paper is useful for explaining how objective-function design changes the adjoint source. The physical forward/adjoint propagation is still wave-equation based, but the residual injected backward is no longer a simple waveform residual.
+
+## Ernst et al. 2007
+
+Status: skimmed from local PDF.
+
+Citation:
+
+Jacques R. Ernst, Hansruedi Maurer, Alan G. Green, and Klaus Holliger, "Full-Waveform Inversion of Crosshole Radar Data Based on 2-D Finite-Difference Time-Domain Solutions of Maxwell's Equations," IEEE Transactions on Geoscience and Remote Sensing, 45(9), 2007.
+
+Problem:
+
+The paper is an early core reference for crosshole GPR full-waveform inversion using 2D FDTD solutions of Maxwell's equations. It argues that ray tomography uses only a small part of the radar trace and is limited to larger-scale features.
+
+Governing equation / solver:
+
+- Time-domain Maxwell equations.
+- 2D finite-difference time-domain forward modeling.
+- Crosshole transmitter/receiver geometry.
+
+Parameters:
+
+- Dielectric permittivity.
+- Electrical conductivity.
+
+Experiment setup:
+
+- Synthetic crosshole data.
+- Increasingly complex models: isolated subwavelength objects, adjacent subwavelength objects, heterogeneous layered media, water-filled tunnels, and closely spaced pipes.
+- Nominal borehole radar frequency range discussed as 20-250 MHz.
+
+Key contribution:
+
+- Demonstrates that crosshole GPR-FWI can reconstruct subwavelength dielectric/conductive objects more accurately than ray tomography under favorable conditions.
+- Shows robustness to uncorrelated noise in synthetic examples.
+
+Limitations:
+
+- Small resistive bodies and closely spaced dielectric objects can be difficult to resolve.
+- Electrical property contrasts may be underestimated.
+- Some configurations approach the resolution limits of the inversion.
+
+Use for Part 1:
+
+- Important historical time-domain baseline.
+- Supports the report's claim that FWI exploits more waveform information than ray tomography but still has resolution and nonuniqueness limits.
+
+## Meng et al. 2019
+
+Status: formula-checked from local PDF.
+
+Citation:
+
+Xu Meng, Sixin Liu, Yi Xu, and Lei Fu, "Application of Laplace Domain Waveform Inversion to Cross-Hole Radar Data," Remote Sensing, 11, 1839, 2019. DOI: `10.3390/rs11161839`.
+
+Problem:
+
+Time-domain FWI is highly nonlinear and needs an adequate initial model. Conventional ray-based initial models have shortcomings. This paper uses Laplace-domain waveform inversion to produce smoother initial models for subsequent time-domain FWI.
+
+Forward problem:
+
+Starting from time-domain Maxwell equations, the paper writes a Laplace-domain system:
+
+\[
+\tilde{M}\tilde{E}=\tilde{J},
+\]
+
+where \(\tilde{M}\) is the Maxwell operator in the Laplace domain. The Green operator is:
+
+\[
+\tilde{G}=\tilde{M}^{-1}.
+\]
+
+Objective:
+
+The paper uses a logarithmic objective because Laplace-domain electric fields can be small:
+
+\[
+O(\epsilon,\sigma)
+=
+\frac{1}{2}
+\sum_{n_s}
+\sum_{n_r}
+\left[
+\ln \tilde{E}(\epsilon,\sigma)
+-
+\ln \tilde{E}^{obs}
+\right]^2.
+\]
+
+Gradient:
+
+The residual-like term is:
+
+\[
+r
+=
+\frac{\ln\tilde{E}-\ln\tilde{E}^{obs}}{\tilde{E}}.
+\]
+
+The virtual sources are:
+
+\[
+\tilde{v}_{\epsilon}=s\tilde{E},
+\quad
+\tilde{v}_{\sigma}=\tilde{E}.
+\]
+
+The gradient structure is:
+
+\[
+\begin{bmatrix}
+\nabla O_\epsilon\\
+\nabla O_\sigma
+\end{bmatrix}
+=
+\sum_{n_s}
+\begin{bmatrix}
+(s\tilde{E})\tilde{G}r\\
+(\tilde{E})\tilde{G}r
+\end{bmatrix}.
+\]
+
+Optimization:
+
+- Permittivity and conductivity are updated with conjugate-gradient directions.
+- The paper uses a stepped update strategy because of large gradient differences between permittivity and conductivity.
+- Parameters are updated in the logarithmic domain to keep positive values and improve convergence.
+
+Use for Part 1:
+
+- Provides a concrete Laplace-domain contrast to time-domain FWI.
+- Supports the idea that Laplace-domain inversion is primarily useful for smooth initial model building rather than replacing detailed time-domain FWI.
+
+## Hunziker et al. 2025
+
+Status: skimmed from local PDF.
+
+Citation:
+
+Jurg Hunziker, Giovanni Meles, and Niklas Linde, "Crosshole ground-penetrating radar full-waveform inversion by combining optimal-transport and least-squares distances," Journal of Applied Geophysics, 237, 105655, 2025.
+
+Problem:
+
+Least-squares FWI can converge to a local minimum if the starting model is not close enough. The paper proposes a crosshole GPR-FWI strategy that uses optimal-transport distance early and switches to least-squares distance once the model is close enough.
+
+Objective strategy:
+
+- Use optimal transport in early iterations because it has a broader basin of attraction for common GPR-FWI problems.
+- Switch to least squares when many traces are shifted by less than half a period relative to observed traces.
+
+Gradient strategy:
+
+- Computes gradients explicitly at random master points and interpolates the remaining model gradient.
+- Avoids placing master points close to antennas, reducing extreme near-antenna gradient values.
+- The sparse master-point gradient also smooths the model without an explicit model-regularization term.
+
+Use for Part 1:
+
+- Important modern objective-function reference.
+- Useful for the cycle-skipping section and for distinguishing objective design from regularization.

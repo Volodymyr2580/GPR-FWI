@@ -273,3 +273,29 @@ Open questions:
 
 - Whether to prioritize more PDF reading or start turning the draft into a polished Chinese report.
 - Whether the next concrete experiment should be a gradient check config in the clean `marmousi_paper/gpr-inversion/` target or the older `Gpr_fwi/` baseline.
+
+## 2026-06-16 Heartbeat 9
+
+Status: broadened literature coverage beyond the first five core PDFs.
+
+Completed:
+
+- Skimmed and extracted notes from:
+  - Ernst et al. 2007, early crosshole GPR-FWI based on 2D FDTD Maxwell solutions.
+  - Meng et al. 2019, Laplace-domain waveform inversion for cross-hole radar initial model building.
+  - Hunziker et al. 2025, OT-to-LS objective switching for crosshole GPR-FWI.
+- Updated `literature_matrix.md` statuses for these papers.
+- Added new sections to both `core_paper_notes.md` and `GPR_FWI_core_paper_notes.md`.
+- Added Laplace-domain logarithmic objective and OT-to-LS switching to both formula summary files.
+- Updated the main report's objective-function section and reference list.
+- Updated `source_status.md` and `review_checklist.md`.
+
+Next heartbeat:
+
+1. Commit this literature-expansion pass if the diff is clean.
+2. Then prioritize either polished Chinese report rewriting or one more method-family expansion, such as frequency-dependent/attenuation or modified TV.
+
+Open questions:
+
+- Need exact DOI for Ernst et al. 2007 and Hunziker et al. 2025 if not already in local metadata.
+- Kuroda 2007 remains unread and could complement Ernst 2007.

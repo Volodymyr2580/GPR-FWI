@@ -639,3 +639,103 @@ Interpretation:
 - Strongly illuminated regions often have larger raw gradients.
 - Poorly illuminated regions may have unreliable gradients.
 - The normalization should balance scale without pretending that unilluminated regions contain recoverable information.
+
+## 17. Laplace-Domain Logarithmic Objective
+
+Meng et al. (2019) use Laplace-domain waveform inversion to build initial models for time-domain GPR-FWI.
+
+The Laplace-domain Maxwell system is written compactly as:
+
+\[
+\tilde{M}\tilde{E}
+=
+\tilde{J},
+\]
+
+with Green operator:
+
+\[
+\tilde{G}
+=
+\tilde{M}^{-1}.
+\]
+
+The logarithmic objective is:
+
+\[
+O(\epsilon,\sigma)
+=
+\frac{1}{2}
+\sum_{s}
+\sum_{r}
+\left[
+\ln \tilde{E}(\epsilon,\sigma)
+-
+\ln \tilde{E}^{obs}
+\right]^2.
+\]
+
+Define:
+
+\[
+r
+=
+\frac{
+\ln\tilde{E}-\ln\tilde{E}^{obs}
+}
+\tilde{E}}.
+\]
+
+The virtual sources for permittivity and conductivity are:
+
+\[
+\tilde{v}_{\epsilon}
+=
+s\tilde{E},
+\]
+
+\[
+\tilde{v}_{\sigma}
+=
+\tilde{E}.
+\]
+
+The gradient structure is:
+
+\[
+\begin{bmatrix}
+\nabla O_\epsilon\\
+\nabla O_\sigma
+\end{bmatrix}
+=
+\sum_s
+\begin{bmatrix}
+(s\tilde{E})\tilde{G}r\\
+(\tilde{E})\tilde{G}r
+\end{bmatrix}.
+\]
+
+Interpretation:
+
+- Laplace-domain inversion emphasizes long-wavelength/smooth information.
+- It can provide a better initial model for time-domain FWI.
+- The damping constant \(s\) must be chosen carefully relative to the radar dominant frequency.
+
+## 18. Objective Switching: OT To LS
+
+Recent crosshole GPR-FWI work combines optimal-transport (OT) and least-squares (LS) distances:
+
+\[
+\Phi(\mathbf{m})
+=
+\begin{cases}
+\Phi_{OT}(\mathbf{m}), & \text{early iterations},\\
+\Phi_{LS}(\mathbf{m}), & \text{after cycle skipping risk decreases}.
+\end{cases}
+\]
+
+Conceptually:
+
+- OT has a broader basin of attraction and helps escape poor starting models.
+- LS is cheaper and sharper near the final solution.
+- A practical switch criterion can be based on whether many synthetic traces are shifted by less than about half a period relative to observed traces.

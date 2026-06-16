@@ -12,8 +12,8 @@
 - [x] Objective / regularization / illumination 已有方法地图。
 - [x] 本地实验线已映射到理论问题。
 - [ ] 每个关键文献结论补充更细引用位置，例如 section/page/equation。
-- [ ] 补充更多经典 time-domain crosshole GPR-FWI 文献。
-- [ ] 补充 Laplace-domain 和 OT objective 的具体公式或实验结论。
+- [x] 补充更多经典 time-domain crosshole GPR-FWI 文献。
+- [x] 补充 Laplace-domain 和 OT objective 的具体公式或实验结论。
 - [ ] 把 currently English-heavy sections 统一成更适合中文汇报的语气。
 
 ## Formula Summary
@@ -36,7 +36,7 @@
 
 - [x] 本地 reference 已初步分类。
 - [x] 五篇核心 PDF 已从 `not_read` 更新为 `skimmed`。
-- [ ] 将更多 `important` 文献更新到 `skimmed/read`。
+- [x] 将更多 `important` 文献更新到 `skimmed/read`。
 - [ ] 补充 DOI/URL、authors、journal、year 字段。
 - [ ] 明确哪些文献属于 time-domain、frequency-domain、Laplace-domain。
 

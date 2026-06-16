@@ -19,6 +19,9 @@
 | Frequency-domain biparameter quasi-Newton GPR-FWI | PDF-formula-checked | Lavoue et al. 2014 | 已提取 TE 方程、objective、adjoint gradient、L-BFGS-B、parameter scaling、Tikhonov regularization。 |
 | Source-independent envelope objective | PDF-formula-checked | Liu et al. 2022 | 已提取 envelope objective、Hilbert transform、backward residual source、\(\epsilon/\sigma\) update structure。 |
 | Implicit multiparameter GPR-FWI | PDF-skimmed | Sun et al. 2024 | 已核实 IFWI、implicit neural representation、frequency principle；还需确认 solver details 和实验设置。 |
+| Early time-domain crosshole 2D FDTD GPR-FWI | PDF-skimmed | Ernst et al. 2007 | 已核实 2D FDTD Maxwell、crosshole synthetic benchmarks、ray tomography 对比和主要限制。 |
+| Laplace-domain initial-model building | PDF-formula-checked | Meng et al. 2019 | 已提取 Laplace Maxwell system、logarithmic objective、\(\epsilon/\sigma\) gradient、stepped update。 |
+| OT-to-LS objective switching | PDF-skimmed | Hunziker et al. 2025 | 已核实 OT early phase、LS late phase、master-point gradient 和 near-antenna gradient handling。 |
 
 ## Local-Experiment-Supported Claims
 
@@ -46,9 +49,9 @@
 
 - 完整精读 Busch et al. 2012 的 objective、search strategy、CMP/waveguide model setup。
 - 完整精读 Sun et al. 2024 的 IFWI forward solver、network mapping、参数设置和 crosstalk 证据。
-- 补充 2007 Ernst/Kuroda 类 early time-domain crosshole GPR-FWI 文献。
-- 补充 Laplace-domain GPR-FWI 文献，用于和 time-domain/frequency-domain 对比。
-- 补充 2021 以来 OT / frequency-dependent / attenuation / modified TV 工作。
+- 继续补充 Kuroda 2007 early crosshole GPR-FWI 文献。
+- 继续补充 frequency-dependent / attenuation / modified TV 工作。
+- 对 OT/LS 2025 文献补充 objective 细节和 open-source implementation 信息。
 
 ## Reporting Rule
 

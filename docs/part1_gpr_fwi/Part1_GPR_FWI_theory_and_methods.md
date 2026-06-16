@@ -388,6 +388,10 @@ Frequency-domain objective 通常选择若干频率分量来反演。优点是�
 
 Laplace-domain objective 会强调信号早期和低频/平滑成分，常用于缓解 cycle skipping 或低频缺失。它可以作为 time-domain 和 frequency-domain 之外的补充路线，但本报告后续仍以 time-domain 为主线。
 
+Meng et al. (2019) 给出了一个直接面向 cross-hole radar 的例子：在 Laplace 域中使用 logarithmic objective 反演 \(\epsilon\) 和 \(\sigma\)，主要目的不是替代 time-domain FWI，而是为 time-domain FWI 提供比 ray-based inversion 更平滑、更合适的初始模型。
+
+Optimal-transport objective 是另一个处理 cycle skipping 的方向。Hunziker et al. (2025) 在 crosshole GPR-FWI 中采用先 OT 后 LS 的策略：早期用 OT 的宽吸引域靠近正确模型，后期切换到 LS 以获得更明确的局部收敛。这种策略提醒我们，目标函数可以按反演阶段切换，而不是从头到尾固定一个 misfit。
+
 ### 8.2 正则化
 
 正则化的作用是把“只拟合数据”变成“在合理模型集合中拟合数据”。一个通用写法是：
@@ -518,5 +522,8 @@ On-ground 或 surface-to-surface GPR 更接近很多工程场景，但反演更�
 - Meles et al. 2012, IEEE TGRS, DOI: `10.1109/TGRS.2011.2170078`.
 - Busch et al. 2012, Geophysics, DOI: `10.1190/GEO2012-0045.1`.
 - Lavoue et al. 2014, GJI, DOI: `10.1093/gji/ggt528`.
+- Ernst et al. 2007, IEEE TGRS.
+- Meng et al. 2019, Remote Sensing, DOI: `10.3390/rs11161839`.
 - Liu et al. 2022, Remote Sensing, DOI: `10.3390/rs14194878`.
 - Sun et al. 2024, GJI, DOI: `10.1093/gji/ggae420`.
+- Hunziker et al. 2025, Journal of Applied Geophysics.
